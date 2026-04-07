@@ -1410,6 +1410,7 @@ async function tcFetch(endpoint) {
 
 async function tcFetchPaginated(endpoint, pageSize = 100) {
   const allItems = [];
+  const seenIds = new Set();
   let start = 0;
   let hasMore = true;
 
@@ -1425,14 +1426,22 @@ async function tcFetchPaginated(endpoint, pageSize = 100) {
     if (!resp.ok) throw new Error(`API ${resp.status}: ${endpoint}`);
     const items = await resp.json();
     if (!Array.isArray(items) || items.length === 0) break;
-    allItems.push(...items);
+
+    // Dedupliceer op basis van id (sommige endpoints geven duplicaten)
+    for (const item of items) {
+      const key = item.id || JSON.stringify(item);
+      if (!seenIds.has(key)) {
+        seenIds.add(key);
+        allItems.push(item);
+      }
+    }
 
     const contentRange = resp.headers.get('Content-Range');
     if (contentRange) {
       const match = contentRange.match(/items \d+-\d+\/(\d+)/);
       if (match) {
         const total = parseInt(match[1]);
-        start += pageSize;
+        start += items.length; // Gebruik werkelijk ontvangen items, niet pageSize
         hasMore = start < total;
       } else { hasMore = false; }
     } else { hasMore = false; }
@@ -1512,17 +1521,9 @@ async function tcFetchTeam() {
   const users = await tcFetchPaginated(`/projects/${tcProject.id}/users`);
   console.log('[TC] Gebruikers opgehaald:', users.length);
 
-  // DEBUG: log alle velden van eerste user om role-veld te vinden
-  if (users.length > 0) {
-    console.log('[TC DEBUG] User velden:', Object.keys(users[0]));
-    console.log('[TC DEBUG] Eerste user volledig:', JSON.stringify(users[0]));
-    // Zoek users met admin-achtige velden
-    const adminLike = users.filter(u =>
-      u.role === 'ADMIN' || u.access === 'ADMIN' || u.permission === 'ADMIN' ||
-      u.projectRole === 'ADMIN' || u.isAdmin === true
-    );
-    console.log('[TC DEBUG] Users met admin-veld:', adminLike.length);
-  }
+  // Admin-telling
+  const adminCount = users.filter(u => (u.role || '').toUpperCase() === 'ADMIN').length;
+  console.log('[TC] Admins:', adminCount, '| Actieve users:', users.filter(u => u.status === 'ACTIVE').length);
 
   // Groepen ophalen — probeer meerdere endpoints
   let groups = [];
@@ -1577,22 +1578,15 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
 
   // Bouw lookup: groep-ID → groepnaam
   const groupById = {};
-  let noIdCount = 0;
-  let dupCount = 0;
   for (const g of groups) {
-    if (!g.id) { noIdCount++; continue; }
-    if (groupById[g.id]) dupCount++;
-    groupById[g.id] = g.name || g.displayName || g.id;
+    if (g.id) groupById[g.id] = g.name || g.displayName || g.id;
   }
   // Bouw lookup: user-ID → username
   const userById = {};
   for (const u of users) {
     userById[u.id] = u.displayName || [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email || u.id;
   }
-  console.log('[TC] Lookups:', Object.keys(groupById).length, 'groepen (van', groups.length, '),', Object.keys(userById).length, 'users');
-  console.log('[TC] Groepen zonder id:', noIdCount, '| duplicaten:', dupCount);
-  // Log eerste 5 groepen om structuur te zien
-  console.log('[TC DEBUG] Eerste 5 groepen:', groups.slice(0, 5).map(g => ({ id: g.id, name: g.name, keys: Object.keys(g) })));
+  console.log('[TC] Lookups:', Object.keys(groupById).length, 'groepen,', Object.keys(userById).length, 'users');
 
   // Helper: resolve "tc-groups:abc123" of "tc-users:abc123" naar naam
   function resolveSubject(subjectStr) {
@@ -1675,12 +1669,12 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
   allGroups = [...groupSet].sort((a, b) => a.localeCompare(b, 'nl'));
   csvData = data;
 
-  // Debug: check of er onopgeloste groep-IDs zijn (namen die op een ID lijken)
-  const unresolvedGroups = allGroups.filter(name => name.length < 20 && !name.includes(' ') && /^[a-zA-Z0-9_-]+$/.test(name));
+  // Check of er onopgeloste groep-IDs zijn (ID in plaats van naam)
+  const unresolvedGroups = allGroups.filter(name => /^[a-zA-Z0-9_-]{8,}$/.test(name) && !name.includes(' '));
   if (unresolvedGroups.length > 0) {
-    console.log('[TC DEBUG] Mogelijk onopgeloste groep-IDs:', unresolvedGroups);
+    console.warn('[TC] Onopgeloste groep-IDs (niet in lookup):', unresolvedGroups);
   }
-  console.log('[TC DEBUG] Alle groepsnamen in rechten:', allGroups);
+  console.log('[TC] Groepsnamen in rechtendata:', allGroups);
 
   // Team data converteren
   if (users.length > 0) {
