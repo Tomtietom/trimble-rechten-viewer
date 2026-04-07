@@ -887,6 +887,15 @@ input[type="file"] { display: none; }
         <div style="width:40px;height:40px;border:4px solid #eee;border-top:4px solid var(--af-oranje);border-radius:50%;animation:spin 1s linear infinite;margin:0 auto;"></div>
       </div>
       <div id="tcStatusText" style="font-size:13px;color:#666;margin-bottom:16px;">Verbinden...</div>
+      <div id="tcProgressBar" style="display:none;width:100%;max-width:320px;margin:0 auto 12px auto;">
+        <div style="background:#eee;border-radius:6px;height:8px;overflow:hidden;">
+          <div id="tcProgressFill" style="background:var(--af-oranje);height:100%;width:0%;border-radius:6px;transition:width 0.3s ease;"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;color:#999;margin-top:4px;">
+          <span id="tcProgressPct">0%</span>
+          <span id="tcProgressEta"></span>
+        </div>
+      </div>
       <div id="tcProgressSteps" style="text-align:left;font-size:12px;color:#888;line-height:2.2;max-width:320px;margin:0 auto;">
         <div id="tcStep1">&#9744; Verbinden met Trimble Connect</div>
         <div id="tcStep2" style="opacity:0.4;">&#9744; Mappenstructuur ophalen</div>
@@ -1168,10 +1177,44 @@ function tcUpdateStep(step, status, text) {
     el.style.opacity = '1';
     const next = document.getElementById('tcStep' + (step + 1));
     if (next) next.style.opacity = '0.7';
+    // Verberg progress bar als stap klaar is
+    document.getElementById('tcProgressBar').style.display = 'none';
   } else if (status === 'error') {
     el.innerHTML = `&#10060; ${text}`;
     el.style.opacity = '1';
   }
+}
+
+let tcProgressStartTime = 0;
+function tcUpdateProgress(current, total, label) {
+  const bar = document.getElementById('tcProgressBar');
+  const fill = document.getElementById('tcProgressFill');
+  const pct = document.getElementById('tcProgressPct');
+  const eta = document.getElementById('tcProgressEta');
+  if (!bar) return;
+
+  bar.style.display = '';
+  const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+  fill.style.width = percent + '%';
+  pct.textContent = percent + '%';
+
+  // Geschatte resterende tijd
+  if (current > 5 && tcProgressStartTime > 0) {
+    const elapsed = (Date.now() - tcProgressStartTime) / 1000;
+    const rate = current / elapsed; // items per seconde
+    const remaining = (total - current) / rate;
+    if (remaining > 60) {
+      eta.textContent = `~${Math.ceil(remaining / 60)} min resterend`;
+    } else if (remaining > 5) {
+      eta.textContent = `~${Math.round(remaining)}s resterend`;
+    } else {
+      eta.textContent = 'Bijna klaar...';
+    }
+  } else {
+    eta.textContent = '';
+  }
+
+  document.getElementById('tcStatusText').textContent = `${label} (${current}/${total})`;
 }
 
 function tcStartAutoFetch() {
@@ -1315,15 +1358,9 @@ async function tcAutoFetchData() {
       return { users: [], groups: [] };
     });
 
-    // Alle mappen ophalen — probeer eerst bulk endpoint
+    // Alle mappen ophalen (recursief breadth-first, 10 parallel)
     let allFolders = [];
-    try {
-      allFolders = await tcFetchAllFoldersBulk(rootFolderId, projectName);
-      console.log('[TC] Bulk: alle mappen opgehaald:', allFolders.length);
-    } catch (e) {
-      console.warn('[TC] Bulk mappen mislukt, fallback naar recursief:', e.message);
-      await tcFetchFoldersRecursive(rootFolderId, '', projectName, allFolders);
-    }
+    await tcFetchFoldersRecursive(rootFolderId, '', projectName, allFolders);
     console.log('[TC] Totaal mappen gevonden:', allFolders.length);
     tcUpdateStep(2, 'done', `${allFolders.length} mappen gevonden`);
 
@@ -1403,76 +1440,26 @@ async function tcFetchPaginated(endpoint, pageSize = 100) {
   return allItems;
 }
 
-async function tcFetchAllFoldersBulk(rootFolderId, projectName) {
-  // Haalt ALLE mappen op via /projects/{id}/folders (flat list, gepagineerd)
-  // en reconstrueert paden via parentId relaties.
-  // ~23 requests ipv ~2250 bij recursief.
-  tcUpdateStep(2, 'loading', 'Alle mappen ophalen (bulk)...');
-
-  const allApiFolders = await tcFetchPaginated('/projects/' + tcProject.id + '/folders');
-  console.log('[TC] Bulk endpoint: ', allApiFolders.length, 'mappen ontvangen');
-
-  if (!allApiFolders || allApiFolders.length === 0) {
-    throw new Error('Bulk endpoint gaf geen mappen terug');
-  }
-
-  // Bouw lookup: id → folder object
-  const byId = {};
-  for (const f of allApiFolders) {
-    byId[f.id] = f;
-  }
-
-  // Bouw pad via parentId chain (cache resultaat per folder)
-  const pathCache = {};
-
-  function buildPath(folderId) {
-    if (pathCache[folderId]) return pathCache[folderId];
-    const folder = byId[folderId];
-    if (!folder) return '';
-
-    if (!folder.parentId || folder.parentId === rootFolderId || !byId[folder.parentId]) {
-      // Direct child van root, of parent is root zelf
-      pathCache[folderId] = projectName + '/' + folder.name;
-    } else {
-      // Recursief pad opbouwen
-      const parentPath = buildPath(folder.parentId);
-      pathCache[folderId] = parentPath + '/' + folder.name;
-    }
-    return pathCache[folderId];
-  }
-
-  // Converteer naar het formaat dat de rest van de app verwacht
-  const result = [];
-  for (const f of allApiFolders) {
-    // Sla de rootfolder zelf over (die zit er soms in)
-    if (f.id === rootFolderId) continue;
-
-    const path = buildPath(f.id);
-    result.push({
-      id: f.id,
-      name: f.name,
-      path: path
-    });
-  }
-
-  tcUpdateStep(2, 'loading', `${result.length} mappen gevonden, rechten ophalen...`);
-  console.log('[TC] Bulk: paden opgebouwd voor', result.length, 'mappen');
-  return result;
-}
-
 async function tcFetchFoldersRecursive(rootFolderId, unused, projectName, result) {
   // Breadth-first parallel ophalen: per niveau alle mappen tegelijk ophalen
-  const PARALLEL = 10; // max gelijktijdige requests
+  const PARALLEL = 20; // max gelijktijdige requests
   let queue = [{ id: rootFolderId, path: '' }]; // mappen waarvan we kinderen moeten ophalen
+  let requestsDone = 0;
+
+  // Start progress tracking
+  tcProgressStartTime = Date.now();
 
   while (queue.length > 0) {
     // Verwerk queue in batches van PARALLEL
     const batch = queue.splice(0, PARALLEL);
     const batchResults = await Promise.all(batch.map(async ({ id, path }) => {
       try {
-        return { path, items: await tcFetchPaginated(`/folders/${id}/items`) };
+        const items = await tcFetchPaginated(`/folders/${id}/items`);
+        requestsDone++;
+        return { path, items };
       } catch (e) {
         console.warn('[TC] Map ophalen mislukt:', id, e.message);
+        requestsDone++;
         return { path, items: [] };
       }
     }));
@@ -1488,13 +1475,18 @@ async function tcFetchFoldersRecursive(rootFolderId, unused, projectName, result
       }
     }
 
-    document.getElementById('tcStatusText').textContent = `Mappen ophalen... (${result.length})`;
+    // Progress: schatting totaal = gevonden + wachtrij (groeit mee)
+    const estimatedTotal = result.length + queue.length;
+    tcUpdateProgress(result.length, estimatedTotal, 'Mappen ophalen');
+    tcUpdateStep(2, 'loading', `Mappen ophalen... (${result.length} gevonden, ${queue.length} wachtrij)`);
   }
 }
 
 async function tcFetchPermissions(folders) {
   const permissions = [];
-  const batchSize = 10;
+  const batchSize = 20;
+
+  tcProgressStartTime = Date.now();
 
   for (let i = 0; i < folders.length; i += batchSize) {
     const batch = folders.slice(i, i + batchSize);
@@ -1508,8 +1500,9 @@ async function tcFetchPermissions(folders) {
       }
     }));
     permissions.push(...results);
-    const pct = Math.round(((i + batch.length) / folders.length) * 100);
-    document.getElementById('tcStatusText').textContent = `Rechten ophalen... ${pct}%`;
+    const done = i + batch.length;
+    tcUpdateProgress(done, folders.length, 'Rechten ophalen');
+    tcUpdateStep(3, 'loading', `Rechten ophalen... (${done}/${folders.length})`);
   }
   return permissions;
 }
@@ -1519,20 +1512,27 @@ async function tcFetchTeam() {
   const users = await tcFetchPaginated(`/projects/${tcProject.id}/users`);
   console.log('[TC] Gebruikers opgehaald:', users.length);
 
-  // Groepen ophalen
+  // Groepen ophalen — probeer meerdere endpoints
   let groups = [];
-  try {
-    groups = await tcFetch(`/projects/${tcProject.id}/groups`);
-    if (!Array.isArray(groups)) groups = [];
-  } catch (e) {
-    console.warn('[TC] Groepen ophalen mislukt:', e.message);
-    // Probeer alternatief endpoint
+  const groupEndpoints = [
+    `/projects/${tcProject.id}/groups`,
+    `/groups?projectId=${tcProject.id}`
+  ];
+  for (const ep of groupEndpoints) {
     try {
-      groups = await tcFetch(`/groups?projectId=${tcProject.id}`);
-      if (!Array.isArray(groups)) groups = [];
-    } catch (e2) {
-      console.warn('[TC] Groepen fallback ook mislukt:', e2.message);
+      const result = await tcFetchPaginated(ep);
+      if (Array.isArray(result) && result.length > 0) {
+        groups = result;
+        console.log('[TC] Groepen opgehaald via', ep, ':', groups.length);
+        break;
+      }
+    } catch (e) {
+      console.warn('[TC] Groepen endpoint mislukt:', ep, e.message);
     }
+  }
+  // Laatste poging: groepen extraheren uit permissies (als die al beschikbaar zijn)
+  if (groups.length === 0) {
+    console.warn('[TC] Geen groepen gevonden via API — groepen worden later uit rechtendata afgeleid');
   }
 
   // Per groep: leden ophalen
@@ -1555,6 +1555,20 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
   const data = [];
   const groupSet = new Set();
 
+  // DEBUG: log eerste paar raw responses zodat we de structuur zien
+  const firstFew = permissionsData.filter(p => p.permissions).slice(0, 3);
+  for (const { folder, permissions } of firstFew) {
+    console.log('[TC DEBUG] Permissions voor', folder.path, ':', JSON.stringify(permissions).substring(0, 500));
+  }
+  if (users.length > 0) {
+    console.log('[TC DEBUG] Eerste user:', JSON.stringify(users[0]).substring(0, 300));
+  }
+  if (groups.length > 0) {
+    console.log('[TC DEBUG] Eerste groep:', JSON.stringify(groups[0]).substring(0, 300));
+  } else {
+    console.log('[TC DEBUG] Geen groepen gevonden via API');
+  }
+
   // Root project entry toevoegen
   data.push({ pad: projectName, default: '', inherited: false, read: [], full: [] });
 
@@ -1564,21 +1578,53 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
     let inherited = false;
 
     if (permissions) {
-      const entries = Array.isArray(permissions) ? permissions : (permissions.accessEntries || permissions.entries || []);
+      // De API kan verschillende structuren teruggeven — probeer alles
+      let entries = [];
+      if (Array.isArray(permissions)) {
+        entries = permissions;
+      } else if (permissions.accessEntries) {
+        entries = permissions.accessEntries;
+      } else if (permissions.entries) {
+        entries = permissions.entries;
+      } else if (permissions.permissions) {
+        entries = Array.isArray(permissions.permissions) ? permissions.permissions : [];
+      }
       inherited = permissions.inherited === true;
 
       if (Array.isArray(entries)) {
         for (const entry of entries) {
-          const name = entry.groupName || entry.subjectName || entry.name || '';
-          const level = (entry.permission || entry.access || entry.level || '').toUpperCase();
-          if (!name) continue;
+          // Naam: probeer meerdere velden
+          const name = entry.groupName || entry.subjectName || entry.name || entry.displayName || entry.subject?.name || '';
+          // Toegangsniveau: probeer meerdere velden
+          const level = (entry.permission || entry.access || entry.level || entry.accessLevel || entry.type || '').toUpperCase();
+
+          // Subject type: is het een groep of user?
+          const subjectType = (entry.subjectType || entry.type || entry.principalType || '').toUpperCase();
+
+          if (!name && !entry.subjectId) continue;
+
+          // Als we een subjectId hebben maar geen naam, zoek de naam op
+          let resolvedName = name;
+          if (!resolvedName && entry.subjectId) {
+            // Zoek in users
+            const user = users.find(u => u.id === entry.subjectId || u.userId === entry.subjectId);
+            if (user) {
+              resolvedName = user.displayName || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email || entry.subjectId;
+            }
+            // Zoek in groups
+            if (!resolvedName) {
+              const group = groups.find(g => g.id === entry.subjectId);
+              if (group) resolvedName = group.name || group.displayName || entry.subjectId;
+            }
+            if (!resolvedName) resolvedName = entry.subjectId;
+          }
 
           if (level.includes('FULL') || level.includes('WRITE') || level === 'ADMIN') {
-            fullGroups.push(name);
-            groupSet.add(name);
+            fullGroups.push(resolvedName);
+            groupSet.add(resolvedName);
           } else if (level.includes('READ') || level === 'VIEWER') {
-            readGroups.push(name);
-            groupSet.add(name);
+            readGroups.push(resolvedName);
+            groupSet.add(resolvedName);
           }
         }
       }
