@@ -855,7 +855,28 @@ input[type="file"] { display: none; }
   </div>
 </div>
 
-<!-- TC loading screen verwijderd — extensie toont direct het upload scherm -->
+<!-- TC AUTO-LOAD SCHERM -->
+<div id="tcLoadingScreen" style="display:none;">
+  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:40px;background:linear-gradient(180deg, white 0%, var(--af-grijs) 100%);">
+    <div class="upload-card" style="max-width:480px;">
+      <h2 style="font-family:'Montserrat',sans-serif;">Rechten Viewer</h2>
+      <div class="tagline">Data ophalen uit Trimble Connect...</div>
+      <div style="margin:24px 0;">
+        <div style="width:40px;height:40px;border:4px solid #eee;border-top:4px solid var(--af-oranje);border-radius:50%;animation:spin 1s linear infinite;margin:0 auto;"></div>
+      </div>
+      <div id="tcStatusText" style="font-size:13px;color:#666;margin-bottom:16px;">Verbinden...</div>
+      <div id="tcProgressSteps" style="text-align:left;font-size:12px;color:#888;line-height:2.2;max-width:320px;margin:0 auto;">
+        <div id="tcStep1">&#9744; Verbinden met Trimble Connect</div>
+        <div id="tcStep2" style="opacity:0.4;">&#9744; Mappenstructuur ophalen</div>
+        <div id="tcStep3" style="opacity:0.4;">&#9744; Rechten ophalen</div>
+        <div id="tcStep4" style="opacity:0.4;">&#9744; Teamleden laden</div>
+      </div>
+      <div id="tcError" style="display:none;margin-top:16px;background:#fde8e8;border:1px solid #f5c6c6;border-radius:8px;padding:12px;font-size:12px;color:#a94442;text-align:left;"></div>
+      <button id="tcFallbackBtn" style="display:none;margin-top:12px;padding:8px 20px;background:var(--af-oranje);color:white;border:none;border-radius:8px;cursor:pointer;font-size:13px;" onclick="tcFallbackToUpload()">Handmatig uploaden</button>
+    </div>
+  </div>
+</div>
+<style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
 
 <!-- MAIN APP -->
 <div id="app" class="app">
@@ -1011,8 +1032,17 @@ let teamData = null;
 let allGroups = [];
 let allUsers = [];
 let tcAPI = null;         // Workspace API reference
+let tcToken = null;       // Access token van TC
 let tcProject = null;     // Huidig project
 let isEmbedded = false;   // Draait in TC iframe?
+
+// TC API base URLs per regio
+const TC_API_REGIONS = {
+  'europe':  'https://app21.connect.trimble.com/tc/api/2.0',
+  'north america': 'https://app.connect.trimble.com/tc/api/2.0',
+  'asia':    'https://app31.connect.trimble.com/tc/api/2.0',
+};
+let TC_API_BASE = TC_API_REGIONS['europe'];
 
 // ============================================================
 //  TRIMBLE CONNECT EXTENSIE DETECTIE & LADEN
@@ -1034,7 +1064,6 @@ function waitForWorkspaceAPI(maxWait = 10000) {
 }
 
 async function initTCExtension() {
-  // Detect of we in een iframe draaien (= TC extension)
   const inIframe = (window.self !== window.top);
   console.log('[Viewer] In iframe:', inIframe, '| URL:', window.location.href);
 
@@ -1043,72 +1072,434 @@ async function initTCExtension() {
     return false;
   }
 
-  // We zitten in een iframe — TC extensie modus
   isEmbedded = true;
   console.log('[Viewer] TC extensie modus');
 
   try {
-    // Wacht op Workspace API library
+    // Stap 1: Verbinden met TC Workspace API
     const apiLib = await waitForWorkspaceAPI(10000);
-    console.log('[TC] API library gevonden:', apiLib);
-
-    // Verbind met TC host — luister naar events
     tcAPI = await apiLib.connect(window.parent, (event, data) => {
       console.log('[TC Event]', event, data);
-      if (event === 'extension.command' || event === 'command') {
-        // Sidebar-item is aangeklikt — toon de viewer
-        console.log('[TC] Command ontvangen:', data);
-        document.getElementById('uploadScreen').style.display = '';
+      // Vang token op als die via event binnenkomt
+      if (data && (data.type === 'token' || event === 'extension.accessToken')) {
+        const token = (typeof data === 'string') ? data : (data.token || data.accessToken || null);
+        if (token && token.length > 20) {
+          tcToken = token;
+          console.log('[TC] Token via event ontvangen, lengte:', token.length);
+        }
       }
     }, 15000);
     console.log('[TC] Verbonden met Workspace API');
 
     // Project info ophalen
     tcProject = await tcAPI.project.getCurrentProject();
-    console.log('[TC] Project:', tcProject?.name);
+    console.log('[TC] Project:', JSON.stringify(tcProject));
 
     // Registreer sidebar menu-item
+    const menuDef = {
+      title: 'Rechten Viewer',
+      icon: 'https://Tomtietom.github.io/trimble-rechten-viewer/icon.png',
+      command: 'open_rechten_viewer'
+    };
     if (tcAPI.ui && typeof tcAPI.ui.setMenu === 'function') {
-      tcAPI.ui.setMenu({
-        title: 'Rechten Viewer',
-        icon: 'https://Tomtietom.github.io/trimble-rechten-viewer/icon.png',
-        command: 'open_rechten_viewer'
-      });
-      console.log('[TC] Sidebar menu geregistreerd via ui.setMenu');
+      tcAPI.ui.setMenu(menuDef);
     } else if (tcAPI.extension && typeof tcAPI.extension.setMenu === 'function') {
-      tcAPI.extension.setMenu({
-        title: 'Rechten Viewer',
-        icon: 'https://Tomtietom.github.io/trimble-rechten-viewer/icon.png',
-        command: 'open_rechten_viewer'
-      });
-      console.log('[TC] Sidebar menu geregistreerd via extension.setMenu');
-    } else {
-      // Log alle beschikbare API methodes voor debugging
-      console.log('[TC] Beschikbare API namespaces:', Object.keys(tcAPI));
-      for (const key of Object.keys(tcAPI)) {
-        if (typeof tcAPI[key] === 'object' && tcAPI[key] !== null) {
-          console.log(`[TC] tcAPI.${key} methodes:`, Object.keys(tcAPI[key]));
-        }
-      }
+      tcAPI.extension.setMenu(menuDef);
     }
 
-    // Toon projectnaam in upload scherm
+    // Toon loading screen en start data ophalen
+    document.getElementById('tcLoadingScreen').style.display = '';
+    await tcAutoFetchData();
+    return true;
+
+  } catch (e) {
+    console.warn('[TC] Extensie init fout:', e.message);
+    // Fallback: toon upload scherm
+    document.getElementById('tcLoadingScreen').style.display = 'none';
+    document.getElementById('uploadScreen').style.display = '';
     const nameEl = document.getElementById('tcProjectLabel');
     if (nameEl && tcProject?.name) {
       nameEl.textContent = tcProject.name;
       nameEl.style.display = '';
     }
-
-    // Toon direct het upload scherm (extensie is zichtbaar zodra TC het paneel opent)
-    document.getElementById('uploadScreen').style.display = '';
-
-  } catch (e) {
-    console.warn('[TC] Extensie init fout:', e.message);
-    // Fallback: toon upload scherm zonder TC-integratie
-    document.getElementById('uploadScreen').style.display = '';
   }
 
   return false;
+}
+
+// ============================================================
+//  TC AUTO-FETCH: data ophalen uit het project
+// ============================================================
+function tcUpdateStep(step, status, text) {
+  const el = document.getElementById('tcStep' + step);
+  if (!el) return;
+  if (status === 'loading') {
+    el.innerHTML = `&#9203; ${text}`;
+    el.style.opacity = '1';
+    document.getElementById('tcStatusText').textContent = text;
+  } else if (status === 'done') {
+    el.innerHTML = `&#9989; ${text}`;
+    el.style.opacity = '1';
+    const next = document.getElementById('tcStep' + (step + 1));
+    if (next) next.style.opacity = '0.7';
+  } else if (status === 'error') {
+    el.innerHTML = `&#10060; ${text}`;
+    el.style.opacity = '1';
+  }
+}
+
+function tcFallbackToUpload() {
+  document.getElementById('tcLoadingScreen').style.display = 'none';
+  document.getElementById('uploadScreen').style.display = '';
+  const nameEl = document.getElementById('tcProjectLabel');
+  if (nameEl && tcProject?.name) {
+    nameEl.textContent = tcProject.name;
+    nameEl.style.display = '';
+  }
+}
+
+async function tcAutoFetchData() {
+  try {
+    // Stap 1: Token ophalen
+    tcUpdateStep(1, 'loading', 'Verbinden met Trimble Connect...');
+
+    // Regio detecteren
+    const loc = (tcProject?.location || 'europe').toLowerCase();
+    if (loc.includes('america') || loc.includes('north')) TC_API_BASE = TC_API_REGIONS['north america'];
+    else if (loc.includes('asia')) TC_API_BASE = TC_API_REGIONS['asia'];
+    else TC_API_BASE = TC_API_REGIONS['europe'];
+    console.log('[TC] Regio:', loc, '→ API:', TC_API_BASE);
+
+    // Access token ophalen — meerdere methodes proberen
+    console.log('[TC] Token ophalen... (al beschikbaar via event?', !!tcToken, ')');
+
+    if (!tcToken) {
+      // Methode 1: requestPermission
+      try {
+        console.log('[TC] Probeer requestPermission...');
+        const tokenResult = await Promise.race([
+          tcAPI.extension.requestPermission('accesstoken'),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000))
+        ]);
+        console.log('[TC] requestPermission resultaat:', typeof tokenResult, String(tokenResult).substring(0, 50));
+        if (typeof tokenResult === 'string' && tokenResult.length > 20) {
+          tcToken = tokenResult;
+        } else if (tokenResult && typeof tokenResult === 'object') {
+          tcToken = tokenResult.token || tokenResult.accessToken || null;
+        }
+      } catch (e) {
+        console.warn('[TC] requestPermission mislukt:', e.message);
+      }
+    }
+
+    if (!tcToken) {
+      // Methode 2: Wacht kort op token via postMessage event
+      console.log('[TC] Wachten op token via event...');
+      await new Promise((resolve) => {
+        const timeout = setTimeout(resolve, 5000);
+        const check = setInterval(() => {
+          if (tcToken) { clearInterval(check); clearTimeout(timeout); resolve(); }
+        }, 200);
+      });
+    }
+
+    if (!tcToken) {
+      // Methode 3: Probeer getAccessToken als die bestaat
+      if (tcAPI.extension && typeof tcAPI.extension.getAccessToken === 'function') {
+        try {
+          const t = await tcAPI.extension.getAccessToken();
+          if (t && t.length > 20) tcToken = t;
+          console.log('[TC] getAccessToken resultaat:', !!tcToken);
+        } catch (e) { console.warn('[TC] getAccessToken mislukt:', e.message); }
+      }
+    }
+
+    if (!tcToken) {
+      // Log alle beschikbare extension methodes voor debugging
+      console.log('[TC] Geen token gevonden. Extension methodes:',
+        tcAPI.extension ? Object.keys(tcAPI.extension) : 'geen extension namespace');
+      console.log('[TC] Alle API namespaces:', Object.keys(tcAPI));
+      for (const key of Object.keys(tcAPI)) {
+        if (typeof tcAPI[key] === 'object' && tcAPI[key] !== null) {
+          console.log(`[TC] tcAPI.${key}:`, Object.keys(tcAPI[key]));
+        }
+      }
+      throw new Error('Geen access token beschikbaar. Controleer of de extensie toegang heeft tot het project.');
+    }
+
+    console.log('[TC] Token beschikbaar, lengte:', tcToken.length);
+    tcUpdateStep(1, 'done', 'Verbonden met ' + (tcProject?.name || 'project'));
+
+    // Stap 2: Mappenstructuur ophalen
+    tcUpdateStep(2, 'loading', 'Mappenstructuur ophalen...');
+    const projectName = tcProject?.name || 'Project';
+
+    // Root folder ID ophalen via REST API
+    let rootFolderId = null;
+    try {
+      const projData = await tcFetch(`/projects/${tcProject.id}`);
+      console.log('[TC] Project REST data keys:', Object.keys(projData));
+      rootFolderId = projData.rootId || projData.rootFolderId;
+    } catch (e) {
+      console.warn('[TC] Project REST mislukt:', e.message);
+    }
+
+    if (!rootFolderId) {
+      // Fallback: haal folders op met projectId filter
+      try {
+        const folders = await tcFetch(`/projects/${tcProject.id}/folders`);
+        console.log('[TC] Project folders response:', Array.isArray(folders) ? folders.length + ' items' : typeof folders);
+        if (Array.isArray(folders) && folders.length > 0) {
+          // Zoek de root (parentId === null of undefined)
+          const root = folders.find(f => !f.parentId) || folders[0];
+          rootFolderId = root.id;
+        }
+      } catch (e2) {
+        console.warn('[TC] Folders fallback mislukt:', e2.message);
+      }
+    }
+
+    if (!rootFolderId) throw new Error('Root folder niet gevonden. Gebruik handmatige upload.');
+    console.log('[TC] Root folder ID:', rootFolderId);
+
+    // Recursief alle mappen ophalen
+    const allFolders = [];
+    await tcFetchFoldersRecursive(rootFolderId, '', projectName, allFolders);
+    console.log('[TC] Totaal mappen gevonden:', allFolders.length);
+    tcUpdateStep(2, 'done', `${allFolders.length} mappen gevonden`);
+
+    // Stap 3: Rechten ophalen per map
+    tcUpdateStep(3, 'loading', 'Rechten ophalen...');
+    const permissionsData = await tcFetchPermissions(allFolders);
+    tcUpdateStep(3, 'done', 'Rechten opgehaald');
+
+    // Stap 4: Teamleden ophalen
+    tcUpdateStep(4, 'loading', 'Teamleden laden...');
+    const { users, groups } = await tcFetchTeam();
+    tcUpdateStep(4, 'done', `${users.length} leden, ${groups.length} groepen`);
+
+    // Data omzetten naar viewer formaat
+    tcConvertData(allFolders, permissionsData, users, groups, projectName);
+
+    // Klaar — toon de app
+    document.getElementById('tcLoadingScreen').style.display = 'none';
+    buildTree();
+    startApp();
+
+  } catch (err) {
+    console.error('[TC] Auto-fetch mislukt:', err);
+    const errorEl = document.getElementById('tcError');
+    errorEl.style.display = '';
+    errorEl.innerHTML = `<strong>Fout:</strong> ${err.message}<br><small>Je kunt de data ook handmatig uploaden.</small>`;
+    document.getElementById('tcFallbackBtn').style.display = '';
+    document.getElementById('tcStatusText').textContent = 'Laden mislukt';
+  }
+}
+
+// ============================================================
+//  TC REST API HELPERS
+// ============================================================
+async function tcFetch(endpoint) {
+  const url = TC_API_BASE + endpoint;
+  console.log('[TC API]', url);
+  const resp = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${tcToken}`,
+      'Accept': 'application/json'
+    }
+  });
+  if (!resp.ok) {
+    const text = await resp.text().catch(() => '');
+    throw new Error(`API ${resp.status}: ${endpoint} — ${text.substring(0, 200)}`);
+  }
+  return resp.json();
+}
+
+async function tcFetchPaginated(endpoint, pageSize = 50) {
+  const allItems = [];
+  let start = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const url = TC_API_BASE + endpoint;
+    const resp = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${tcToken}`,
+        'Accept': 'application/json',
+        'Range': `items=${start}-${start + pageSize - 1}`
+      }
+    });
+    if (!resp.ok) throw new Error(`API ${resp.status}: ${endpoint}`);
+    const items = await resp.json();
+    if (!Array.isArray(items) || items.length === 0) break;
+    allItems.push(...items);
+
+    const contentRange = resp.headers.get('Content-Range');
+    if (contentRange) {
+      const match = contentRange.match(/items \d+-\d+\/(\d+)/);
+      if (match) {
+        const total = parseInt(match[1]);
+        start += pageSize;
+        hasMore = start < total;
+      } else { hasMore = false; }
+    } else { hasMore = false; }
+  }
+  return allItems;
+}
+
+async function tcFetchFoldersRecursive(folderId, parentPath, projectName, result) {
+  let items;
+  try {
+    items = await tcFetchPaginated(`/folders/${folderId}/items`);
+  } catch (e) {
+    console.warn('[TC] Fout bij map ophalen:', folderId, e.message);
+    return;
+  }
+
+  const folders = items.filter(item => item.type === 'FOLDER');
+  for (const folder of folders) {
+    const folderPath = parentPath ? `${parentPath}/${folder.name}` : folder.name;
+    const fullPath = `${projectName}/${folderPath}`;
+    result.push({ id: folder.id, name: folder.name, path: fullPath });
+
+    // Update status
+    document.getElementById('tcStatusText').textContent = `Mappen ophalen... (${result.length})`;
+
+    // Recursief submappen ophalen
+    await tcFetchFoldersRecursive(folder.id, folderPath, projectName, result);
+  }
+}
+
+async function tcFetchPermissions(folders) {
+  const permissions = [];
+  const batchSize = 5;
+
+  for (let i = 0; i < folders.length; i += batchSize) {
+    const batch = folders.slice(i, i + batchSize);
+    const results = await Promise.all(batch.map(async (folder) => {
+      try {
+        const perms = await tcFetch(`/folders/fs/${folder.id}/permissions`);
+        return { folder, permissions: perms };
+      } catch (e) {
+        console.warn('[TC] Rechten fout voor', folder.path, e.message);
+        return { folder, permissions: null };
+      }
+    }));
+    permissions.push(...results);
+    const pct = Math.round(((i + batch.length) / folders.length) * 100);
+    document.getElementById('tcStatusText').textContent = `Rechten ophalen... ${pct}%`;
+  }
+  return permissions;
+}
+
+async function tcFetchTeam() {
+  // Gebruikers ophalen
+  const users = await tcFetchPaginated(`/projects/${tcProject.id}/users`);
+  console.log('[TC] Gebruikers opgehaald:', users.length);
+
+  // Groepen ophalen
+  let groups = [];
+  try {
+    groups = await tcFetch(`/projects/${tcProject.id}/groups`);
+    if (!Array.isArray(groups)) groups = [];
+  } catch (e) {
+    console.warn('[TC] Groepen ophalen mislukt:', e.message);
+    // Probeer alternatief endpoint
+    try {
+      groups = await tcFetch(`/groups?projectId=${tcProject.id}`);
+      if (!Array.isArray(groups)) groups = [];
+    } catch (e2) {
+      console.warn('[TC] Groepen fallback ook mislukt:', e2.message);
+    }
+  }
+
+  // Per groep: leden ophalen
+  for (const group of groups) {
+    try {
+      const members = await tcFetch(`/groups/${group.id}/users`);
+      group.memberIds = Array.isArray(members) ? members.map(m => m.id || m.userId) : [];
+    } catch (e) {
+      group.memberIds = [];
+    }
+  }
+
+  return { users, groups };
+}
+
+// ============================================================
+//  TC DATA → VIEWER FORMAAT CONVERSIE
+// ============================================================
+function tcConvertData(folders, permissionsData, users, groups, projectName) {
+  const data = [];
+  const groupSet = new Set();
+
+  // Root project entry toevoegen
+  data.push({ pad: projectName, default: '', inherited: false, read: [], full: [] });
+
+  for (const { folder, permissions } of permissionsData) {
+    const readGroups = [];
+    const fullGroups = [];
+    let inherited = false;
+
+    if (permissions) {
+      const entries = Array.isArray(permissions) ? permissions : (permissions.accessEntries || permissions.entries || []);
+      inherited = permissions.inherited === true;
+
+      if (Array.isArray(entries)) {
+        for (const entry of entries) {
+          const name = entry.groupName || entry.subjectName || entry.name || '';
+          const level = (entry.permission || entry.access || entry.level || '').toUpperCase();
+          if (!name) continue;
+
+          if (level.includes('FULL') || level.includes('WRITE') || level === 'ADMIN') {
+            fullGroups.push(name);
+            groupSet.add(name);
+          } else if (level.includes('READ') || level === 'VIEWER') {
+            readGroups.push(name);
+            groupSet.add(name);
+          }
+        }
+      }
+    }
+
+    data.push({
+      pad: folder.path,
+      default: '',
+      inherited: inherited,
+      read: readGroups,
+      full: fullGroups
+    });
+  }
+
+  allGroups = [...groupSet].sort((a, b) => a.localeCompare(b, 'nl'));
+  csvData = data;
+
+  // Team data converteren
+  if (users.length > 0) {
+    const teamUsers = users.map(u => {
+      const userName = u.displayName || [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email || 'Onbekend';
+      const userGroups = groups
+        .filter(g => g.memberIds && g.memberIds.includes(u.id || u.userId))
+        .map(g => g.name || g.displayName);
+      return {
+        name: userName.trim(),
+        email: u.email || '',
+        role: (u.role || 'USER').toUpperCase(),
+        groups: userGroups,
+        status: u.status || 'Active'
+      };
+    });
+
+    // Voeg groepsnamen toe aan allGroups
+    for (const u of teamUsers) {
+      u.groups.forEach(g => { if (!allGroups.includes(g)) allGroups.push(g); });
+    }
+    allGroups.sort((a, b) => a.localeCompare(b, 'nl'));
+    allUsers = teamUsers.sort((a, b) => a.name.localeCompare(b.name, 'nl'));
+    teamData = teamUsers;
+  }
+
+  console.log('[TC] Data geconverteerd:', csvData.length, 'mappen,', allGroups.length, 'groepen,', allUsers.length, 'gebruikers');
 }
 
 // ============================================================
@@ -2256,8 +2647,21 @@ function renderDashboard() {
 
 function backToUpload() {
   document.getElementById('app').classList.remove('visible');
-  document.getElementById('uploadScreen').style.display = '';
   document.getElementById('folderDetail').classList.remove('visible');
+  if (isEmbedded && tcToken) {
+    // In TC-modus: herlaad data uit project
+    document.getElementById('tcLoadingScreen').style.display = '';
+    // Reset steps
+    for (let i = 1; i <= 4; i++) {
+      const el = document.getElementById('tcStep' + i);
+      if (el) { el.innerHTML = '&#9744; ' + el.textContent.replace(/^[^\s]+\s/, ''); el.style.opacity = i === 1 ? '1' : '0.4'; }
+    }
+    document.getElementById('tcError').style.display = 'none';
+    document.getElementById('tcFallbackBtn').style.display = 'none';
+    tcAutoFetchData();
+  } else {
+    document.getElementById('uploadScreen').style.display = '';
+  }
 }
 </script>
 </body>
