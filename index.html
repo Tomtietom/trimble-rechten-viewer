@@ -1512,11 +1512,23 @@ async function tcFetchTeam() {
   const users = await tcFetchPaginated(`/projects/${tcProject.id}/users`);
   console.log('[TC] Gebruikers opgehaald:', users.length);
 
+  // DEBUG: log alle velden van eerste user om role-veld te vinden
+  if (users.length > 0) {
+    console.log('[TC DEBUG] User velden:', Object.keys(users[0]));
+    console.log('[TC DEBUG] Eerste user volledig:', JSON.stringify(users[0]));
+    // Zoek users met admin-achtige velden
+    const adminLike = users.filter(u =>
+      u.role === 'ADMIN' || u.access === 'ADMIN' || u.permission === 'ADMIN' ||
+      u.projectRole === 'ADMIN' || u.isAdmin === true
+    );
+    console.log('[TC DEBUG] Users met admin-veld:', adminLike.length);
+  }
+
   // Groepen ophalen — probeer meerdere endpoints
   let groups = [];
   const groupEndpoints = [
-    `/projects/${tcProject.id}/groups`,
-    `/groups?projectId=${tcProject.id}`
+    `/groups?projectId=${tcProject.id}`,
+    `/projects/${tcProject.id}/groups`
   ];
   for (const ep of groupEndpoints) {
     try {
@@ -1530,19 +1542,27 @@ async function tcFetchTeam() {
       console.warn('[TC] Groepen endpoint mislukt:', ep, e.message);
     }
   }
-  // Laatste poging: groepen extraheren uit permissies (als die al beschikbaar zijn)
   if (groups.length === 0) {
-    console.warn('[TC] Geen groepen gevonden via API — groepen worden later uit rechtendata afgeleid');
+    console.warn('[TC] Geen groepen gevonden via API');
   }
 
-  // Per groep: leden ophalen
-  for (const group of groups) {
-    try {
-      const members = await tcFetch(`/groups/${group.id}/users`);
-      group.memberIds = Array.isArray(members) ? members.map(m => m.id || m.userId) : [];
-    } catch (e) {
-      group.memberIds = [];
-    }
+  // Per groep: leden ophalen — PARALLEL in batches van 20
+  console.log('[TC] Groepsleden ophalen voor', groups.length, 'groepen...');
+  tcProgressStartTime = Date.now();
+  const batchSize = 20;
+  for (let i = 0; i < groups.length; i += batchSize) {
+    const batch = groups.slice(i, i + batchSize);
+    await Promise.all(batch.map(async (group) => {
+      try {
+        const members = await tcFetchPaginated(`/groups/${group.id}/users`);
+        group.memberIds = Array.isArray(members) ? members.map(m => m.id || m.userId) : [];
+      } catch (e) {
+        group.memberIds = [];
+      }
+    }));
+    const done = Math.min(i + batchSize, groups.length);
+    tcUpdateProgress(done, groups.length, 'Groepsleden ophalen');
+    tcUpdateStep(4, 'loading', `Groepsleden ophalen... (${done}/${groups.length})`);
   }
 
   return { users, groups };
@@ -1555,18 +1575,29 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
   const data = [];
   const groupSet = new Set();
 
-  // DEBUG: log eerste paar raw responses zodat we de structuur zien
-  const firstFew = permissionsData.filter(p => p.permissions).slice(0, 3);
-  for (const { folder, permissions } of firstFew) {
-    console.log('[TC DEBUG] Permissions voor', folder.path, ':', JSON.stringify(permissions).substring(0, 500));
+  // Bouw lookup: groep-ID → groepnaam
+  const groupById = {};
+  for (const g of groups) {
+    groupById[g.id] = g.name || g.displayName || g.id;
   }
-  if (users.length > 0) {
-    console.log('[TC DEBUG] Eerste user:', JSON.stringify(users[0]).substring(0, 300));
+  // Bouw lookup: user-ID → username
+  const userById = {};
+  for (const u of users) {
+    userById[u.id] = u.displayName || [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email || u.id;
   }
-  if (groups.length > 0) {
-    console.log('[TC DEBUG] Eerste groep:', JSON.stringify(groups[0]).substring(0, 300));
-  } else {
-    console.log('[TC DEBUG] Geen groepen gevonden via API');
+  console.log('[TC] Lookups: ', Object.keys(groupById).length, 'groepen,', Object.keys(userById).length, 'users');
+
+  // Helper: resolve "tc-groups:abc123" of "tc-users:abc123" naar naam
+  function resolveSubject(subjectStr) {
+    if (subjectStr.startsWith('tc-groups:')) {
+      const gid = subjectStr.replace('tc-groups:', '');
+      return { name: groupById[gid] || gid, type: 'group' };
+    } else if (subjectStr.startsWith('tc-users:')) {
+      const uid = subjectStr.replace('tc-users:', '');
+      return { name: userById[uid] || uid, type: 'user' };
+    }
+    // Onbekend prefix — probeer als groep-ID
+    return { name: groupById[subjectStr] || userById[subjectStr] || subjectStr, type: 'unknown' };
   }
 
   // Root project entry toevoegen
@@ -1578,53 +1609,48 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
     let inherited = false;
 
     if (permissions) {
-      // De API kan verschillende structuren teruggeven — probeer alles
-      let entries = [];
-      if (Array.isArray(permissions)) {
-        entries = permissions;
-      } else if (permissions.accessEntries) {
-        entries = permissions.accessEntries;
-      } else if (permissions.entries) {
-        entries = permissions.entries;
-      } else if (permissions.permissions) {
-        entries = Array.isArray(permissions.permissions) ? permissions.permissions : [];
-      }
-      inherited = permissions.inherited === true;
+      // Trimble API structuur:
+      // { directPermissions: { defaultAccess: "NO_ACCESS", acl: { READ: [...], FULL: [...] }, inheritance: false } }
+      // OF: { inheritedPermissions: { ... }, directPermissions: { ... } }
+      const direct = permissions.directPermissions || permissions;
+      const acl = direct.acl || {};
+      inherited = direct.inheritance === true;
 
-      if (Array.isArray(entries)) {
-        for (const entry of entries) {
-          // Naam: probeer meerdere velden
-          const name = entry.groupName || entry.subjectName || entry.name || entry.displayName || entry.subject?.name || '';
-          // Toegangsniveau: probeer meerdere velden
-          const level = (entry.permission || entry.access || entry.level || entry.accessLevel || entry.type || '').toUpperCase();
+      // Verwerk elke access-level
+      for (const [level, subjects] of Object.entries(acl)) {
+        if (!Array.isArray(subjects)) continue;
+        const upperLevel = level.toUpperCase();
 
-          // Subject type: is het een groep of user?
-          const subjectType = (entry.subjectType || entry.type || entry.principalType || '').toUpperCase();
+        for (const subject of subjects) {
+          const resolved = resolveSubject(subject);
 
-          if (!name && !entry.subjectId) continue;
-
-          // Als we een subjectId hebben maar geen naam, zoek de naam op
-          let resolvedName = name;
-          if (!resolvedName && entry.subjectId) {
-            // Zoek in users
-            const user = users.find(u => u.id === entry.subjectId || u.userId === entry.subjectId);
-            if (user) {
-              resolvedName = user.displayName || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email || entry.subjectId;
-            }
-            // Zoek in groups
-            if (!resolvedName) {
-              const group = groups.find(g => g.id === entry.subjectId);
-              if (group) resolvedName = group.name || group.displayName || entry.subjectId;
-            }
-            if (!resolvedName) resolvedName = entry.subjectId;
+          if (upperLevel === 'FULL' || upperLevel === 'WRITE' || upperLevel === 'ADMIN') {
+            fullGroups.push(resolved.name);
+            groupSet.add(resolved.name);
+          } else if (upperLevel === 'READ' || upperLevel === 'VIEWER') {
+            readGroups.push(resolved.name);
+            groupSet.add(resolved.name);
           }
+        }
+      }
 
-          if (level.includes('FULL') || level.includes('WRITE') || level === 'ADMIN') {
-            fullGroups.push(resolvedName);
-            groupSet.add(resolvedName);
-          } else if (level.includes('READ') || level === 'VIEWER') {
-            readGroups.push(resolvedName);
-            groupSet.add(resolvedName);
+      // Als er inheritedPermissions zijn en geen directe, gebruik die
+      if (readGroups.length === 0 && fullGroups.length === 0 && permissions.inheritedPermissions) {
+        inherited = true;
+        const inhPerm = permissions.inheritedPermissions;
+        const inhAcl = inhPerm.acl || {};
+        for (const [level, subjects] of Object.entries(inhAcl)) {
+          if (!Array.isArray(subjects)) continue;
+          const upperLevel = level.toUpperCase();
+          for (const subject of subjects) {
+            const resolved = resolveSubject(subject);
+            if (upperLevel === 'FULL' || upperLevel === 'WRITE' || upperLevel === 'ADMIN') {
+              fullGroups.push(resolved.name);
+              groupSet.add(resolved.name);
+            } else if (upperLevel === 'READ' || upperLevel === 'VIEWER') {
+              readGroups.push(resolved.name);
+              groupSet.add(resolved.name);
+            }
           }
         }
       }
@@ -1646,15 +1672,23 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
   if (users.length > 0) {
     const teamUsers = users.map(u => {
       const userName = u.displayName || [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email || 'Onbekend';
+      const uid = u.id || u.userId;
       const userGroups = groups
-        .filter(g => g.memberIds && g.memberIds.includes(u.id || u.userId))
+        .filter(g => g.memberIds && g.memberIds.includes(uid))
         .map(g => g.name || g.displayName);
+
+      // Detecteer admin role: TC API kan 'role', 'access', of 'permission' gebruiken
+      const rawRole = (u.role || u.access || u.permission || u.projectRole || 'USER').toUpperCase();
+      // Status normaliseren
+      const rawStatus = (u.status || 'Active').toUpperCase();
+      const status = rawStatus === 'ACTIVE' ? 'Active' : rawStatus === 'REMOVED' ? 'Removed' : u.status || 'Active';
+
       return {
         name: userName.trim(),
         email: u.email || '',
-        role: (u.role || 'USER').toUpperCase(),
+        role: rawRole,
         groups: userGroups,
-        status: u.status || 'Active'
+        status: status
       };
     });
 
