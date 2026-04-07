@@ -145,6 +145,7 @@ input[type="file"] { display: none; }
 /* === MAIN APP === */
 .app { display: none; height: calc(100vh - 50px); }
 .app.visible { display: flex; flex-direction: column; }
+.app-body { display: flex; flex: 1; overflow: hidden; }
 
 /* === SIDEBAR === */
 .sidebar {
@@ -164,22 +165,39 @@ input[type="file"] { display: none; }
   display: flex;
   gap: 4px;
   margin-bottom: 10px;
+  flex-wrap: wrap;
 }
 .view-tab {
   flex: 1;
-  padding: 7px;
+  min-width: 0;
+  padding: 7px 4px;
   border: none;
   background: var(--af-grijs);
   border-radius: 6px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 500;
   font-family: 'Poppins', sans-serif;
   transition: all 0.15s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .view-tab.active {
   background: var(--af-oranje);
   color: white;
+}
+
+/* TC extensie modus: smal iframe, single-column layout */
+@media (max-width: 600px) {
+  .app-body { flex-direction: column; }
+  .sidebar { width: 100% !important; border-right: none !important; border-bottom: 1px solid #e8e0d8; flex-shrink: 0; }
+  .header h1 { font-size: 13px !important; }
+  .header .brand { display: none; }
+  .header { padding: 8px 12px !important; gap: 4px; flex-wrap: wrap; }
+  .header .subtitle { margin-left: 0; font-size: 11px; }
+  .view-tab { font-size: 11px; padding: 6px 2px; }
+  .sidebar-section { padding: 10px 12px; }
 }
 
 .search-box {
@@ -782,8 +800,8 @@ input[type="file"] { display: none; }
 <!-- UPLOAD SCHERM -->
 <div id="uploadScreen" class="upload-screen" style="display:none;">
   <div class="upload-card">
-    <img src="https://irp.cdn-website.com/a75ebd43/dms3rep/multi/opt/1-1920w.png" alt="At Fielt" style="height:48px;margin-bottom:12px;" onerror="this.style.display='none'">
-    <h2>Trimble Connect Rechten Viewer</h2>
+    <img src="logo.svg" alt="At Fielt" style="height:48px;margin-bottom:12px;">
+    <h2>Rechten Viewer</h2>
     <div class="tagline">by At Fielt</div>
     <div id="tcProjectLabel" style="display:none;background:var(--af-oranje-licht);color:var(--af-oranje);padding:6px 16px;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:8px;"></div>
     <p>Upload de exports uit je Trimble Connect project om rechten per groep en gebruiker te bekijken.</p>
@@ -881,6 +899,7 @@ input[type="file"] { display: none; }
 <div id="tcLoadingScreen" style="display:none;">
   <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:40px;background:linear-gradient(180deg, white 0%, var(--af-grijs) 100%);">
     <div class="upload-card" style="max-width:480px;">
+      <img src="logo.svg" alt="At Fielt" style="height:40px;margin-bottom:12px;">
       <h2 style="font-family:'Montserrat',sans-serif;">Rechten Viewer</h2>
       <div class="tagline">Data ophalen uit Trimble Connect...</div>
       <div style="margin:24px 0;">
@@ -917,12 +936,15 @@ input[type="file"] { display: none; }
 <!-- MAIN APP -->
 <div id="app" class="app">
   <div class="header">
-    <button onclick="backToUpload()" style="background:none;border:1px solid rgba(255,255,255,0.3);color:white;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-family:'Poppins',sans-serif;margin-right:8px;transition:background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.15)'" onmouseout="this.style.background='none'">&larr; Terug</button>
-    <h1>Trimble Connect Rechten Viewer <span class="brand">by At Fielt</span></h1>
+    <button id="backBtn" onclick="backToUpload()" style="background:none;border:1px solid rgba(255,255,255,0.3);color:white;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-family:'Poppins',sans-serif;margin-right:8px;transition:background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.15)'" onmouseout="this.style.background='none'">&larr; Terug</button>
+    <h1>Rechten Viewer</h1>
     <span class="subtitle" id="projectName" style="background:rgba(255,255,255,0.15);padding:2px 12px;border-radius:6px;font-weight:600;"></span>
+    <a href="https://bimplementeer.nl" target="_blank" rel="noopener" title="At Fielt" class="header-logo" style="margin-left:auto;display:flex;align-items:center;text-decoration:none;">
+      <img src="logo.svg" alt="At Fielt" style="height:22px;opacity:0.7;transition:opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+    </a>
   </div>
 
-  <div style="display:flex; flex:1; overflow:hidden;">
+  <div class="app-body">
     <div class="sidebar">
       <div class="sidebar-section">
         <div class="view-tabs">
@@ -1521,9 +1543,7 @@ async function tcFetchTeam() {
   const users = await tcFetchPaginated(`/projects/${tcProject.id}/users`);
   console.log('[TC] Gebruikers opgehaald:', users.length);
 
-  // Admin-telling
-  const adminCount = users.filter(u => (u.role || '').toUpperCase() === 'ADMIN').length;
-  console.log('[TC] Admins:', adminCount, '| Actieve users:', users.filter(u => u.status === 'ACTIVE').length);
+  console.log('[TC] Users:', users.length, '| Admins:', users.filter(u => (u.role || '').toUpperCase() === 'ADMIN').length);
 
   // Groepen ophalen — probeer meerdere endpoints
   let groups = [];
@@ -2704,10 +2724,10 @@ function startApp() {
   document.getElementById('app').classList.add('visible');
   const projectNaam = tcProject ? (tcProject.name || tcProject.id) : (csvData[0]?.pad.split('/')[0] || 'Onbekend project');
   document.getElementById('projectName').textContent = projectNaam;
-  // In TC-modus: verberg terug-knop en maak header compacter
+  // In TC-modus: verberg terug-knop
   if (isEmbedded) {
-    const backBtn = document.querySelector('#app .header button');
-    if (backBtn) backBtn.style.display = 'none';
+    const bb = document.getElementById('backBtn');
+    if (bb) bb.style.display = 'none';
   }
   // Start in dashboard-view
   currentView = 'dashboard';
