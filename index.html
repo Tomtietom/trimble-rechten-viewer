@@ -1,0 +1,2581 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trimble Connect - Rechten Viewer | At Fielt</title>
+<link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAJZJREFUWEft1DEKwCAQRdHx/peOhYVFCi1cwEIS0E5m+PPrVTq5e/9e3T3T+34fp/tnJoCZBECSJEmSJEmSJGlJANd9v3rv+xGA+wSQJEmSJEmS/ncAz8eSJEmSJEmStCSA53NJkiRJkiRJSwJ4PpckSZIkSZK0JIDnc0mSJEmSJElLAng+lyRJkiRJkrQkgOdzSZIkSZL+ewBfYCl0Id3cvQAAAABJRU5ErkJggg==">
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #f9f9f9;
+  color: #222;
+  min-height: 100vh;
+}
+
+/* === AT FIELT KLEUREN === */
+:root {
+  --af-oranje: #d4821a;
+  --af-oranje-hover: #ec5d0e;
+  --af-oranje-licht: #fef5eb;
+  --af-donker: #222;
+  --af-grijs: #f5f0ea;
+  --af-full: #2d6a4f;
+  --af-full-bg: #d4edda;
+  --af-read: #004085;
+  --af-read-bg: #cce5ff;
+}
+
+/* === HEADER === */
+.header {
+  background: var(--af-donker);
+  color: white;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+.header h1 {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+}
+.header .brand {
+  font-size: 12px;
+  opacity: 0.5;
+  margin-left: 8px;
+  font-weight: 400;
+}
+.header .subtitle {
+  font-size: 13px;
+  opacity: 0.7;
+  margin-left: auto;
+  font-family: 'Poppins', sans-serif;
+}
+
+/* === UPLOAD SCHERM === */
+.upload-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 50px);
+  padding: 40px;
+  background: linear-gradient(180deg, white 0%, var(--af-grijs) 100%);
+}
+.upload-card {
+  background: white;
+  border-radius: 14px;
+  padding: 48px;
+  max-width: 620px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.06);
+}
+.upload-card h2 {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 22px;
+  margin-bottom: 4px;
+}
+.upload-card .tagline { color: var(--af-oranje); font-size: 13px; font-weight: 500; margin-bottom: 20px; }
+.upload-card p { color: #666; margin-bottom: 24px; font-size: 14px; }
+
+.drop-zone {
+  border: 2px dashed #ccc;
+  border-radius: 12px;
+  padding: 28px;
+  margin-bottom: 12px;
+  transition: all 0.2s;
+  cursor: pointer;
+}
+.drop-zone:hover, .drop-zone.drag-over {
+  border-color: var(--af-oranje);
+  background: var(--af-oranje-licht);
+}
+.drop-zone .icon { font-size: 40px; margin-bottom: 8px; }
+.drop-zone label { color: var(--af-oranje); cursor: pointer; font-weight: 600; }
+
+.upload-step {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-top: 8px;
+  text-align: left;
+}
+.upload-step h3 { font-size: 13px; margin-bottom: 4px; font-weight: 600; }
+.upload-step .status { font-size: 12px; color: #666; }
+.upload-step .status.ok { color: var(--af-full); font-weight: 500; }
+.upload-step .status.waiting { color: #999; }
+
+.disclaimer {
+  margin-top: 20px;
+  padding: 12px 16px;
+  background: #fff8f0;
+  border: 1px solid #f0dcc8;
+  border-radius: 8px;
+  font-size: 11px;
+  color: #8a6d3b;
+  text-align: left;
+  line-height: 1.6;
+}
+
+input[type="file"] { display: none; }
+
+.start-btn {
+  padding: 12px 36px;
+  background: var(--af-oranje);
+  color: white;
+  border: none;
+  border-radius: 40px;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: 'Montserrat', sans-serif;
+  cursor: pointer;
+  opacity: 0.4;
+  transition: all 0.2s;
+  box-shadow: 0 10px 25px rgba(212,130,26,0.3);
+}
+.start-btn:not(:disabled):hover { background: var(--af-oranje-hover); }
+
+/* === MAIN APP === */
+.app { display: none; height: calc(100vh - 50px); }
+.app.visible { display: flex; flex-direction: column; }
+
+/* === SIDEBAR === */
+.sidebar {
+  width: 320px;
+  background: white;
+  border-right: 1px solid #e8e0d8;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.sidebar-section {
+  padding: 14px 16px;
+  border-bottom: 1px solid #eee;
+}
+
+.view-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.view-tab {
+  flex: 1;
+  padding: 7px;
+  border: none;
+  background: var(--af-grijs);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: 'Poppins', sans-serif;
+  transition: all 0.15s;
+}
+.view-tab.active {
+  background: var(--af-oranje);
+  color: white;
+}
+
+.search-box {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: 'Poppins', sans-serif;
+  outline: none;
+}
+.search-box:focus { border-color: var(--af-oranje); }
+
+.select-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 12px 12px;
+}
+.select-item {
+  padding: 9px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background 0.1s;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.select-item:hover { background: var(--af-oranje-licht); }
+.select-item.active { background: var(--af-oranje); color: white; }
+.select-item .badge {
+  font-size: 11px;
+  background: #e8e0d8;
+  padding: 2px 8px;
+  border-radius: 10px;
+  color: #555;
+}
+.select-item.active .badge { background: rgba(255,255,255,0.25); color: white; }
+
+.user-groups {
+  font-size: 11px;
+  color: #888;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+.select-item.active .user-groups { color: rgba(255,255,255,0.7); }
+
+.section-header {
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #888;
+  border-bottom: 1px solid #eee;
+  margin-top: 8px;
+  font-family: 'Montserrat', sans-serif;
+}
+.section-header:first-child { margin-top: 0; }
+
+.select-item.inactive { opacity: 0.45; }
+.select-item.inactive .user-name { text-decoration: line-through; }
+
+/* === CONTENT === */
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.info-bar {
+  padding: 10px 24px;
+  background: white;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.info-bar .name { font-weight: 600; font-size: 15px; font-family: 'Montserrat', sans-serif; }
+.info-bar .role-badge {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+.info-bar .role-badge.admin { background: #ffeaa7; color: #6c5b00; }
+.info-bar .role-badge.user { background: #dfe6e9; color: #555; }
+
+.stats {
+  display: flex;
+  gap: 14px;
+  margin-left: auto;
+  font-size: 12px;
+}
+.stat { display: flex; align-items: center; gap: 4px; }
+.stat .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.dot.full { background: var(--af-full); }
+.dot.read { background: var(--af-read); }
+.dot.none { background: #ccc; }
+
+.export-btn {
+  padding: 6px 14px;
+  background: var(--af-oranje);
+  color: white;
+  border: none;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: 'Poppins', sans-serif;
+  transition: background 0.15s;
+}
+.export-btn:hover { background: var(--af-oranje-hover); }
+
+.tree-search {
+  padding: 8px 24px;
+  background: white;
+  border-bottom: 1px solid #eee;
+}
+.tree-search input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: 'Poppins', sans-serif;
+  outline: none;
+}
+.tree-search input:focus { border-color: var(--af-oranje); }
+
+/* === BOOM === */
+.tree-container { flex: 1; overflow: auto; padding: 16px 24px; }
+.tree-node { margin-left: 0; }
+.tree-node .children { margin-left: 24px; }
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.1s;
+  gap: 6px;
+  font-size: 14px;
+  margin-bottom: 1px;
+}
+.tree-row:hover { filter: brightness(0.97); }
+
+.tree-row .toggle { width: 18px; text-align: center; font-size: 10px; color: #999; flex-shrink: 0; }
+.tree-row .folder-icon { font-size: 16px; flex-shrink: 0; }
+.tree-row .folder-name { flex: 1; }
+.tree-row .access-badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+/* Toegangsniveaus */
+.access-full { background: var(--af-full-bg); }
+.access-full .folder-name { color: var(--af-full); font-weight: 500; }
+.access-full .access-badge { background: var(--af-full); color: white; }
+
+.access-read { background: var(--af-read-bg); }
+.access-read .folder-name { color: var(--af-read); }
+.access-read .access-badge { background: var(--af-read); color: white; }
+
+.access-inherited { opacity: 0.75; }
+.access-inherited .folder-name { font-style: italic; }
+
+/* Bovenliggende map zonder eigen toegang (pad-context) */
+.access-container {
+  background: #f8f6f4;
+  border-left: 3px solid #ccc;
+  margin-left: -2px;
+}
+.access-container .folder-name { font-size: 12px; color: #999; }
+.access-container .folder-icon { opacity: 0.3; }
+.access-container .container-note {
+  font-size: 10px; color: #b0a090; margin-left: 8px; font-style: italic;
+}
+
+/* Onbereikbaar: map heeft rechten maar bovenliggende mappen niet */
+.access-unreachable { background: #fff8e1; border-left: 3px solid #f0ad4e; margin-left: -2px; }
+.access-unreachable:hover { background: #fff3cd !important; }
+.access-unreachable .folder-name { color: #856404; }
+.access-unreachable .access-badge { background: #856404; color: white; }
+.link-only-badge {
+  font-size: 9px; background: #f0ad4e; color: #fff; padding: 1px 7px; border-radius: 8px;
+  margin-left: 4px; font-weight: 500; white-space: nowrap;
+}
+
+/* Geen toegang: rood met verboden-pictogram (zichtbaar als toggle uit staat) */
+.access-none { background: #fde8e8; }
+.access-none:hover { background: #fcd4d4 !important; }
+.access-none .folder-name { color: #a94442; }
+.access-none .folder-icon { opacity: 1; }
+.access-none .access-badge { background: #a94442; color: white; }
+/* Verberg als toggle aan staat */
+.hide-no-access .access-none { display: none; }
+
+/* Map detail panel */
+.folder-detail {
+  width: 340px;
+  background: white;
+  border-left: 1px solid #e8e0d8;
+  overflow-y: auto;
+  display: none;
+  flex-direction: column;
+}
+.folder-detail.visible { display: flex; }
+.folder-detail-header {
+  padding: 16px 18px;
+  border-bottom: 1px solid #eee;
+  background: var(--af-grijs);
+}
+.folder-detail-header h3 {
+  font-size: 14px;
+  font-weight: 600;
+  font-family: 'Montserrat', sans-serif;
+  margin: 0;
+  word-break: break-all;
+}
+.folder-detail-header .folder-path {
+  font-size: 11px;
+  color: #888;
+  margin-top: 4px;
+  word-break: break-all;
+}
+.folder-detail-section {
+  padding: 12px 18px;
+  border-bottom: 1px solid #f0f0f0;
+}
+.folder-detail-section h4 {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #888;
+  margin: 0 0 8px;
+  font-family: 'Montserrat', sans-serif;
+}
+.folder-detail-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  margin-bottom: 2px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.folder-detail-item:hover { background: var(--af-oranje-licht); }
+.folder-detail-item .access-tag {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 8px;
+  font-weight: 600;
+  color: white;
+  flex-shrink: 0;
+}
+.folder-detail-item .access-tag.full { background: var(--af-full); }
+.folder-detail-item .access-tag.read { background: var(--af-read); }
+.folder-detail-item .admin-badge {
+  font-size: 9px;
+  background: #ffeaa7;
+  color: #6c5b00;
+  padding: 1px 5px;
+  border-radius: 8px;
+  margin-left: 4px;
+}
+.tree-row.selected { outline: 2px solid var(--af-oranje); outline-offset: -2px; }
+.folder-info-btn {
+  font-size: 11px;
+  cursor: pointer;
+  margin-left: 6px;
+  flex-shrink: 0;
+  padding: 2px 10px;
+  border-radius: 12px;
+  background: var(--af-oranje-licht);
+  color: var(--af-oranje);
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s;
+}
+.tree-row:hover .folder-info-btn { opacity: 1; }
+.folder-info-btn:hover { background: var(--af-oranje); color: white; }
+
+/* Legenda */
+.legend {
+  padding: 10px 24px;
+  background: white;
+  border-top: 1px solid #eee;
+  display: flex;
+  gap: 18px;
+  font-size: 11px;
+  color: #666;
+  align-items: center;
+}
+.legend-item { display: flex; align-items: center; gap: 4px; }
+.legend-swatch { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+
+.toggle-switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 11px;
+  cursor: pointer;
+}
+.toggle-switch input { cursor: pointer; accent-color: var(--af-oranje); }
+
+/* Info-modal */
+.info-help-btn {
+  background: var(--af-oranje); color: white; border: none; border-radius: 50%;
+  width: 22px; height: 22px; font-size: 13px; font-weight: 700; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: background 0.2s; flex-shrink: 0;
+}
+.info-help-btn:hover { background: var(--af-oranje-hover); }
+.info-modal-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+  z-index: 1000; align-items: center; justify-content: center;
+}
+.info-modal-overlay.visible { display: flex; }
+.info-modal {
+  background: white; border-radius: 14px; max-width: 720px; width: 92%;
+  max-height: 85vh; overflow-y: auto; padding: 32px 36px; position: relative;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+}
+.info-modal h2 { font-family: 'Montserrat', sans-serif; font-size: 18px; margin-bottom: 16px; color: var(--af-donker); }
+.info-modal h3 { font-family: 'Montserrat', sans-serif; font-size: 14px; margin: 18px 0 8px; color: var(--af-oranje); }
+.info-modal p, .info-modal li { font-size: 13px; line-height: 1.7; color: #444; }
+.info-modal ul { padding-left: 20px; margin: 6px 0 12px; }
+.info-modal .close-btn {
+  position: absolute; top: 14px; right: 18px; background: none; border: none;
+  font-size: 22px; cursor: pointer; color: #999; transition: color 0.2s;
+}
+.info-modal .close-btn:hover { color: #333; }
+.info-modal table { width: 100%; border-collapse: collapse; margin: 10px 0 16px; font-size: 12px; }
+.info-modal th { background: var(--af-oranje); color: white; padding: 6px 10px; text-align: left; font-weight: 600; }
+.info-modal td { padding: 5px 10px; border-bottom: 1px solid #eee; }
+.info-modal tr:nth-child(even) td { background: #faf8f6; }
+.info-modal .info-badge { display: inline-block; padding: 1px 8px; border-radius: 8px; font-size: 11px; font-weight: 600; }
+.info-modal .badge-full { background: var(--af-full-bg); color: var(--af-full); }
+.info-modal .badge-read { background: var(--af-read-bg); color: var(--af-read); }
+.info-modal .badge-none { background: #fde8e8; color: #a94442; }
+.info-modal .badge-link { background: #fff8e1; color: #856404; }
+.info-modal .note-box {
+  background: #fff8e1; border-left: 4px solid #f0ad4e; padding: 10px 14px;
+  border-radius: 0 8px 8px 0; margin: 12px 0; font-size: 12px;
+}
+.info-modal .tip-box {
+  background: #e8f4f8; border-left: 4px solid #17a2b8; padding: 10px 14px;
+  border-radius: 0 8px 8px 0; margin: 12px 0; font-size: 12px;
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: #bbb;
+  font-size: 14px;
+}
+
+/* === DASHBOARD === */
+.dashboard {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+  display: none;
+}
+.dashboard.visible { display: block; }
+.dashboard-header {
+  margin-bottom: 24px;
+}
+.dashboard-header h2 {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--af-donker);
+  margin: 0;
+}
+.dashboard-header p {
+  font-size: 13px;
+  color: #888;
+  margin: 4px 0 0;
+}
+.dash-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.dash-card {
+  background: white;
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  border: 1px solid #eee;
+}
+.dash-card .dash-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #888;
+  font-weight: 600;
+  font-family: 'Montserrat', sans-serif;
+}
+.dash-card .dash-value {
+  font-size: 28px;
+  font-weight: 700;
+  font-family: 'Montserrat', sans-serif;
+  margin-top: 4px;
+}
+.dash-section {
+  background: white;
+  border-radius: 10px;
+  padding: 18px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  border: 1px solid #eee;
+  margin-bottom: 16px;
+}
+.dash-section h3 {
+  font-family: 'Montserrat', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0 0 12px;
+  color: var(--af-donker);
+}
+.dash-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  font-size: 12px;
+}
+.dash-bar-label {
+  width: 220px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+.dash-bar-track {
+  flex: 1;
+  height: 18px;
+  background: #f0ebe5;
+  border-radius: 9px;
+  overflow: hidden;
+  position: relative;
+}
+.dash-bar-fill {
+  height: 100%;
+  border-radius: 9px;
+  transition: width 0.3s;
+}
+.dash-bar-count {
+  width: 40px;
+  text-align: right;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+/* === HANDLEIDING === */
+.guide-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  color: var(--af-oranje);
+  font-weight: 600;
+  font-size: 13px;
+  margin: 16px 0 8px;
+  padding: 8px 16px;
+  background: var(--af-oranje-licht);
+  border-radius: 8px;
+  transition: background 0.15s;
+  border: none;
+  font-family: 'Poppins', sans-serif;
+}
+.guide-toggle:hover { background: #f0dcc8; }
+.guide-toggle .arrow { transition: transform 0.2s; display: inline-block; }
+.guide-toggle.open .arrow { transform: rotate(90deg); }
+
+.guide-panel {
+  display: none;
+  background: white;
+  border: 1px solid #e8e0d8;
+  border-radius: 12px;
+  padding: 0;
+  margin: 8px 0 16px;
+  overflow: hidden;
+  text-align: left;
+}
+.guide-panel.visible { display: block; }
+
+.guide-section {
+  padding: 20px 24px;
+  border-bottom: 1px solid #f0ebe5;
+}
+.guide-section:last-child { border-bottom: none; }
+.guide-section h3 {
+  font-size: 14px;
+  font-weight: 700;
+  font-family: 'Montserrat', sans-serif;
+  margin: 0 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.guide-section h3 .step-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.guide-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  counter-reset: guide-step;
+}
+.guide-steps li {
+  counter-increment: guide-step;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.7;
+  border-bottom: 1px solid #f8f5f1;
+  position: relative;
+  padding-left: 42px;
+}
+.guide-steps li:last-child { border-bottom: none; }
+.guide-steps li::before {
+  content: counter(guide-step);
+  background: var(--af-oranje);
+  color: white;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  position: absolute;
+  left: 6px;
+  top: 10px;
+}
+.guide-steps .menu-path {
+  display: inline;
+  background: #f0ebe5;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 12px;
+}
+.guide-steps .menu-btn {
+  display: inline;
+  background: var(--af-oranje);
+  color: white;
+  padding: 2px 10px;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 12px;
+}
+.guide-link-btn {
+  display: inline-block;
+  margin-top: 12px;
+  padding: 8px 16px;
+  background: var(--af-oranje-licht);
+  color: var(--af-oranje);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+}
+.guide-link-btn:hover {
+  background: var(--af-oranje);
+  color: white;
+}
+</style>
+</head>
+<body>
+
+<!-- UPLOAD SCHERM -->
+<div id="uploadScreen" class="upload-screen">
+  <div class="upload-card">
+    <img src="https://irp.cdn-website.com/a75ebd43/dms3rep/multi/opt/1-1920w.png" alt="At Fielt" style="height:48px;margin-bottom:12px;" onerror="this.style.display='none'">
+    <h2>Trimble Connect Rechten Viewer</h2>
+    <div class="tagline">by At Fielt</div>
+    <p>Upload de exports uit je Trimble Connect project om rechten per groep en gebruiker te bekijken.</p>
+
+    <button class="guide-toggle" id="guideToggle" onclick="this.classList.toggle('open');document.getElementById('guidePanel').classList.toggle('visible');">
+      <span class="arrow">&#9654;</span> Hoe werkt dit? Bekijk de handleiding
+    </button>
+
+    <div class="guide-panel" id="guidePanel">
+      <div class="guide-section">
+        <h3><span class="step-icon" style="background:var(--af-oranje);color:white;">1</span> Permissions CSV downloaden</h3>
+        <ul class="guide-steps">
+          <li>Open <strong>Trimble Connect</strong> in je browser en ga naar het gewenste project.</li>
+          <li>Scroll in de linker navigatiebalk naar beneden en klik op <span class="menu-path">&#9881; Instellingen</span>. Het instellingenmenu klapt open.</li>
+          <li>Klik op <span class="menu-path">Overzicht van rechten</span>. Je ziet nu een tabel met alle mappen en de bijbehorende toegangsrollen per groep.</li>
+          <li>Klik rechtsboven op <span class="menu-btn">Exporteren naar CSV</span>. Het bestand wordt direct gedownload.</li>
+          <li>Upload het gedownloade CSV-bestand hieronder bij <strong>Stap 1</strong>.</li>
+        </ul>
+        <a href="Overzicht van rechten exporteren  .html" target="_blank" class="guide-link-btn">&#128248; Bekijk handleiding met screenshots &rarr;</a>
+      </div>
+      <div class="guide-section">
+        <h3><span class="step-icon" style="background:#4472C4;color:white;">2</span> Team Excel downloaden (optioneel)</h3>
+        <ul class="guide-steps">
+          <li>Ga in de linker navigatiebalk naar <span class="menu-path">Team</span>. De pagina <em>Projectleden</em> opent met alle leden, groepen en rollen.</li>
+          <li>Klik rechtsboven op de <span class="menu-path">&#8942; drie puntjes</span> naast de filteropties.</li>
+          <li>Klik in het dropdownmenu op <span class="menu-btn">Naar Excel exporteren</span>. Trimble verwerkt de ledenlijst.</li>
+          <li>Je ontvangt een <strong>e-mail</strong> van noreply@trimble.com zodra het bestand klaar is.</li>
+          <li>Open de e-mail en klik op de knop <span class="menu-btn">Download Excel</span>. Zorg dat je ingelogd bent in Trimble Connect.</li>
+          <li>Upload het gedownloade Excel-bestand hieronder bij <strong>Stap 2</strong>.</li>
+        </ul>
+        <a href="Projectleden exporteren naar excel.html" target="_blank" class="guide-link-btn">&#128248; Bekijk handleiding met screenshots &rarr;</a>
+        <p style="font-size:11px;color:#888;margin:10px 0 0;line-height:1.5;">
+          &#9432; De Team Excel is nodig om rechten <strong>per gebruiker</strong> te bekijken. Zonder dit bestand kun je alleen rechten per <strong>groep</strong> zien.
+        </p>
+      </div>
+    </div>
+
+    <div class="drop-zone" id="dropZone1" onclick="document.getElementById('csvFile')?.click()">
+      <div class="icon">&#128193;</div>
+      <div>Sleep de <strong>permissions CSV</strong> hierheen<br>of <label>klik om te kiezen</label></div>
+      <input type="file" id="csvFile" accept=".csv">
+    </div>
+    <div class="upload-step" id="step1status">
+      <h3>Stap 1: Maprechten (CSV)</h3>
+      <div class="status waiting">Nog niet geladen — <em>download via Instellingen &rarr; Mappenstructuur &rarr; Exporteren</em></div>
+    </div>
+
+    <br>
+
+    <div class="drop-zone" id="dropZone2" onclick="document.getElementById('xlsxFile')?.click()">
+      <div class="icon">&#128101;</div>
+      <div>Sleep de <strong>Team Excel</strong> hierheen<br>of <label>klik om te kiezen</label></div>
+      <input type="file" id="xlsxFile" accept=".xlsx,.xls">
+    </div>
+    <div class="upload-step" id="step2status">
+      <h3>Stap 2: Gebruikers &amp; groepen (Excel) — optioneel</h3>
+      <div class="status waiting">Optioneel — <em>download via Instellingen &rarr; Team &rarr; Exporteren</em></div>
+    </div>
+
+    <br>
+    <div id="projectMismatchWarning" style="display:none;background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:12px 16px;margin-bottom:12px;font-size:12px;color:#856404;line-height:1.6;text-align:left;"></div>
+    <button id="startBtn" class="start-btn" disabled onclick="startApp()">Bekijk rechten</button>
+
+    <div class="disclaimer">
+      <strong>Disclaimer:</strong> Deze tool is bedoeld als hulpmiddel voor inzicht in de mappenstructuur en rechteninrichting.
+      At Fielt is niet verantwoordelijk voor eventuele fouten in de weergave of voor verkeerd ingestelde rechten in Trimble Connect.
+      Controleer de rechteninstellingen altijd in Trimble Connect zelf.
+    </div>
+  </div>
+</div>
+
+<!-- TC LOADING SCHERM -->
+<div id="tcLoadingScreen" style="display:none;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:40px;background:linear-gradient(180deg, white 0%, var(--af-grijs) 100%);">
+  <div class="upload-card" style="max-width:480px;">
+    <img src="https://irp.cdn-website.com/a75ebd43/dms3rep/multi/opt/1-1920w.png" alt="At Fielt" style="height:48px;margin-bottom:12px;" onerror="this.style.display='none'">
+    <h2>Rechten Viewer</h2>
+    <div class="tagline">Trimble Connect Extension</div>
+    <div id="tcLoadingStatus" style="margin:24px 0;font-size:14px;color:#666;">
+      <div style="margin-bottom:16px;">
+        <div class="tc-spinner" style="width:40px;height:40px;border:4px solid #eee;border-top:4px solid var(--af-oranje);border-radius:50%;animation:spin 1s linear infinite;margin:0 auto;"></div>
+      </div>
+      <div id="tcStatusText">Verbinden met Trimble Connect...</div>
+    </div>
+    <div id="tcProgressSteps" style="text-align:left;font-size:12px;color:#888;line-height:2.2;max-width:320px;margin:0 auto;">
+      <div id="tcStep1">&#9203; Verbinding maken...</div>
+      <div id="tcStep2" style="opacity:0.4;">&#9744; Projectinfo ophalen</div>
+      <div id="tcStep3" style="opacity:0.4;">&#9744; Mappenstructuur laden</div>
+      <div id="tcStep4" style="opacity:0.4;">&#9744; Rechten ophalen</div>
+      <div id="tcStep5" style="opacity:0.4;">&#9744; Teamleden laden</div>
+    </div>
+    <div id="tcError" style="display:none;margin-top:16px;background:#fde8e8;border:1px solid #f5c6c6;border-radius:8px;padding:12px;font-size:12px;color:#a94442;text-align:left;"></div>
+    <button id="tcFallbackBtn" style="display:none;margin-top:16px;" class="start-btn" onclick="tcFallbackToUpload()">Handmatig uploaden</button>
+  </div>
+</div>
+<style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+
+<!-- MAIN APP -->
+<div id="app" class="app">
+  <div class="header">
+    <button onclick="backToUpload()" style="background:none;border:1px solid rgba(255,255,255,0.3);color:white;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-family:'Poppins',sans-serif;margin-right:8px;transition:background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.15)'" onmouseout="this.style.background='none'">&larr; Terug</button>
+    <h1>Trimble Connect Rechten Viewer <span class="brand">by At Fielt</span></h1>
+    <span class="subtitle" id="projectName" style="background:rgba(255,255,255,0.15);padding:2px 12px;border-radius:6px;font-weight:600;"></span>
+  </div>
+
+  <div style="display:flex; flex:1; overflow:hidden;">
+    <div class="sidebar">
+      <div class="sidebar-section">
+        <div class="view-tabs">
+          <button class="view-tab" onclick="switchView('dashboard')">Dashboard</button>
+          <button class="view-tab" onclick="switchView('mappen')">Mappen</button>
+          <button class="view-tab active" onclick="switchView('groep')">Groepen</button>
+          <button class="view-tab" onclick="switchView('gebruiker')">Gebruikers</button>
+        </div>
+        <input type="text" class="search-box" id="sidebarSearch" placeholder="Zoek groep of gebruiker..." oninput="filterSidebar()">
+      </div>
+      <div class="select-list" id="selectList"></div>
+    </div>
+
+    <div class="content">
+      <div class="info-bar" id="infoBar" style="display:none;">
+        <span class="name" id="selectedName"></span>
+        <span class="role-badge" id="selectedRole" style="display:none;"></span>
+        <span id="selectedEmail" style="font-size:12px; color:#888;"></span>
+        <div class="stats">
+          <span class="stat"><span class="dot full"></span> <span id="statFull">0</span> Full</span>
+          <span class="stat"><span class="dot read"></span> <span id="statRead">0</span> Read</span>
+          <span class="stat"><span class="dot" style="background:#f0ad4e;"></span> <span id="statUnreachable">0</span> Via link</span>
+          <span class="stat"><span class="dot none"></span> <span id="statNone">0</span> Geen</span>
+        </div>
+        <button class="export-btn" onclick="exportToExcel()">&#128202; Rechtenmatrix exporteren</button>
+      </div>
+
+      <div id="exportBarMappen" style="display:none;padding:8px 24px;background:white;border-bottom:1px solid #eee;display:flex;align-items:center;gap:12px;">
+        <span style="font-weight:600;font-size:14px;font-family:'Montserrat',sans-serif;">Mappenstructuur</span>
+        <span style="font-size:12px;color:#888;margin-left:auto;" id="mappenCount"></span>
+        <button class="export-btn" onclick="exportToExcel()">&#128202; Rechtenmatrix exporteren</button>
+      </div>
+
+      <div id="memberDetail" style="display:none;padding:8px 24px;background:var(--af-grijs);border-bottom:1px solid #e8e0d8;font-size:12px;line-height:2;"></div>
+      <div class="tree-search" id="treeSearchBar" style="display:none;">
+        <input type="text" placeholder="Zoek map..." oninput="filterTree(this.value)">
+      </div>
+
+      <div class="dashboard" id="dashboardPanel"></div>
+
+      <div style="display:flex;flex:1;overflow:hidden;" id="treeArea">
+        <div class="tree-container" id="treeContainer" style="flex:1;">
+          <div class="placeholder">Kies een groep of gebruiker in het linkerpaneel</div>
+        </div>
+        <div class="folder-detail" id="folderDetail">
+          <div class="folder-detail-header">
+            <h3 id="folderDetailName"></h3>
+            <div class="folder-path" id="folderDetailPath"></div>
+          </div>
+          <div id="folderDetailContent"></div>
+        </div>
+      </div>
+
+      <div class="legend" id="legendBar" style="display:none;">
+        <button class="info-help-btn" onclick="document.getElementById('infoModal').classList.add('visible')" title="Hoe werken rechten in Trimble Connect?">?</button>
+        <span class="legend-item"><span class="legend-swatch" style="background:var(--af-full-bg);border:1px solid #c3e6cb;"></span> Full Access</span>
+        <span class="legend-item"><span class="legend-swatch" style="background:var(--af-read-bg);border:1px solid #b8daff;"></span> Read Access</span>
+        <span class="legend-item"><span class="legend-swatch" style="background:#fff8e1;border:1px solid #f0ad4e;"></span> &#9888;&#65039; Alleen via directe link</span>
+        <span class="legend-item"><span class="legend-swatch" style="background:#fde8e8;border:1px solid #f5c6c6;"></span> &#128683; Geen toegang</span>
+        <span class="legend-item"><span class="legend-swatch" style="background:#f8f6f4;border:2px solid #ccc;"></span> Verborgen map (submappen wel toegang)</span>
+        <span class="legend-item" style="font-style:italic;">Cursief = geërfd recht</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="hideNoAccess" checked onchange="renderTree()"> Alleen toegankelijke mappen
+        </label>
+      </div>
+
+      <!-- Info Modal: Hoe werken rechten in Trimble Connect -->
+      <div class="info-modal-overlay" id="infoModal" onclick="if(event.target===this)this.classList.remove('visible')">
+        <div class="info-modal">
+          <button class="close-btn" onclick="document.getElementById('infoModal').classList.remove('visible')">&times;</button>
+          <h2>&#128218; Hoe werken rechten in Trimble Connect?</h2>
+
+          <h3>Rechtenniveaus</h3>
+          <p>In Trimble Connect zijn er drie niveaus van toegang op mappen:</p>
+          <table>
+            <tr><th>Niveau</th><th>Wat kan de gebruiker?</th></tr>
+            <tr>
+              <td><span class="info-badge badge-full">Full Access</span></td>
+              <td>Bestanden openen, bewerken, verwijderen, verplaatsen. Nieuwe bestanden en mappen toevoegen.</td>
+            </tr>
+            <tr>
+              <td><span class="info-badge badge-read">Read Only</span></td>
+              <td>Map zien en bestanden openen/downloaden. Niet bewerken of verwijderen.</td>
+            </tr>
+            <tr>
+              <td><span class="info-badge badge-none">No Access</span></td>
+              <td>Map en bestanden zijn <strong>volledig verborgen</strong>. De gebruiker ziet de map niet.</td>
+            </tr>
+          </table>
+
+          <h3>Overerving (Inheritance)</h3>
+          <p>Standaard erven submappen de rechten van hun bovenliggende map. Dit betekent:</p>
+          <ul>
+            <li>Als een groep <strong>Full Access</strong> heeft op een map, hebben ze dat automatisch ook op alle submappen (tenzij overerving is uitgeschakeld).</li>
+            <li>Overerving kan per submap worden uitgeschakeld via <em>"Inherit from parent folder"</em> in Trimble Connect.</li>
+            <li>Een submap kan dan eigen (strengere of ruimere) rechten krijgen.</li>
+          </ul>
+          <p><em>In deze viewer worden geërfde rechten weergegeven in cursief.</em></p>
+
+          <h3>Meerdere groepen</h3>
+          <div class="tip-box">
+            <strong>Hoogste recht wint:</strong> Als een gebruiker lid is van meerdere groepen, geldt altijd het hoogste toegangsniveau. Bijvoorbeeld: als groep A "Full Access" en groep B "Read Only" heeft op een map, dan heeft de gebruiker Full Access.
+          </div>
+
+          <h3>Project Admins</h3>
+          <p>Project Administrators hebben <strong>altijd volledige toegang</strong> tot alle mappen en bestanden, ongeacht de ingestelde rechten. Ze kunnen ook als enige rechten beheren.</p>
+
+          <h3>Verborgen mappen &amp; directe links</h3>
+          <div class="note-box">
+            <strong>Belangrijk:</strong> Als een gebruiker "No Access" heeft op een bovenliggende map, is die map <strong>volledig verborgen</strong> in Trimble Connect. De gebruiker kan er niet naartoe navigeren via de mappenstructuur.<br><br>
+            Als een submap wél eigen rechten heeft (bijv. Read Access), maar de bovenliggende map is verborgen, dan is die submap <strong>alleen bereikbaar via een directe link</strong>. In deze viewer worden zulke mappen gemarkeerd met <span class="info-badge badge-link">&#9888; Alleen via directe link</span>.
+          </div>
+
+          <h3>Alle Project Leden</h3>
+          <p>"Alle project leden" is een impliciete groep in Trimble Connect. Rechten die aan deze groep worden toegekend, gelden voor <strong>iedereen</strong> in het project. Als deze groep Read Access heeft op een map, kan elk projectlid die map zien.</p>
+          <div class="tip-box">
+            <strong>Let op:</strong> Rechten op specifieke groepen overschrijven de rechten van "Alle project leden". Een groep kan dus strengere of ruimere rechten hebben dan het projectbrede niveau.
+          </div>
+
+          <h3>Wat toont deze viewer?</h3>
+          <table>
+            <tr><th>Kleur</th><th>Betekenis</th></tr>
+            <tr><td><span class="info-badge badge-full">Full Access</span></td><td>Gebruiker kan alles doen in deze map</td></tr>
+            <tr><td><span class="info-badge badge-read">Read Only</span></td><td>Gebruiker kan alleen lezen/downloaden</td></tr>
+            <tr><td><span class="info-badge badge-link">&#9888; Via directe link</span></td><td>Rechten zijn ingesteld, maar de bovenliggende map is verborgen — alleen bereikbaar via link</td></tr>
+            <tr><td><span class="info-badge badge-none">Geen toegang</span></td><td>Map is verborgen voor de gebruiker</td></tr>
+            <tr><td style="color:#aaa;font-style:italic;">Grijze map</td><td>Bovenliggende map zonder eigen rechten — in viewer getoond als context, maar verborgen in Trimble Connect</td></tr>
+          </table>
+
+          <p style="margin-top:20px;font-size:11px;color:#999;">Bron: <a href="https://help.trimble.com/en/trimble-connect/trimble-connect/connect-for-browser/files-and-folders/folder-permissions" target="_blank" style="color:var(--af-oranje);">Trimble Connect Help — Folder Permissions</a></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+//  GLOBALE STATE
+// ============================================================
+let csvData = null;
+let teamData = null;
+let allGroups = [];
+let allUsers = [];
+let tcAPI = null;         // Workspace API reference
+let tcToken = null;       // Access token van TC
+let tcProject = null;     // Huidig project
+let isEmbedded = false;   // Draait in TC iframe?
+
+// TC API base URL (EU region standaard, detectie volgt)
+const TC_API_REGIONS = {
+  'eu':  'https://app21.connect.trimble.com/tc/api/2.0',
+  'us':  'https://app.connect.trimble.com/tc/api/2.0',
+  'ap':  'https://app31.connect.trimble.com/tc/api/2.0',
+  'ap2': 'https://app32.connect.trimble.com/tc/api/2.0'
+};
+let TC_API_BASE = TC_API_REGIONS['eu']; // standaard EU
+
+// ============================================================
+//  TRIMBLE CONNECT EXTENSIE DETECTIE & LADEN
+// ============================================================
+// Wacht tot de Workspace API library beschikbaar is (TC injecteert deze soms pas later)
+function waitForWorkspaceAPI(maxWait = 10000) {
+  return new Promise((resolve, reject) => {
+    // Check meteen
+    const api = window.WorkspaceAPI || window.Extensions || window.TrimbleConnectWorkspace;
+    if (api) { console.log('[TC] API library direct gevonden:', api); return resolve(api); }
+
+    const start = Date.now();
+    const interval = setInterval(() => {
+      const api = window.WorkspaceAPI || window.Extensions || window.TrimbleConnectWorkspace;
+      if (api) { clearInterval(interval); console.log('[TC] API library gevonden na wachten:', api); resolve(api); }
+      else if (Date.now() - start > maxWait) { clearInterval(interval); reject(new Error('Workspace API niet beschikbaar na ' + (maxWait/1000) + 's')); }
+    }, 200);
+  });
+}
+
+async function initTCExtension() {
+  // Detect of we in een iframe draaien (= TC extension)
+  const inIframe = (window.self !== window.top);
+  console.log('[Viewer] In iframe:', inIframe, '| URL:', window.location.href);
+
+  if (!inIframe) {
+    console.log('[Viewer] Standalone modus');
+    return false;
+  }
+
+  // We zitten in een iframe — probeer TC extensie modus
+  isEmbedded = true;
+  document.getElementById('uploadScreen').style.display = 'none';
+  document.getElementById('tcLoadingScreen').style.display = 'flex';
+
+  try {
+    tcUpdateStep(1, 'loading', 'Wachten op Trimble Connect API...');
+    console.log('[Viewer] TC extensie modus, wachten op API library...');
+
+    // Wacht tot de API library beschikbaar is
+    let apiLib;
+    try {
+      apiLib = await waitForWorkspaceAPI(10000);
+    } catch (e) {
+      console.warn('[Viewer] API library niet gevonden via globals, probeer CDN...', e.message);
+      // Probeer CDN opnieuw te laden
+      await new Promise((resolve) => {
+        const script = document.createElement('script');
+        script.src = 'https://components.connect.trimble.com/trimble-connect-workspace-api/index.js';
+        script.onload = () => { console.log('[TC] CDN script geladen'); resolve(); };
+        script.onerror = () => { console.warn('[TC] CDN script laden mislukt'); resolve(); };
+        document.head.appendChild(script);
+      });
+      apiLib = window.WorkspaceAPI || window.Extensions || window.TrimbleConnectWorkspace;
+    }
+
+    if (!apiLib || typeof apiLib.connect !== 'function') {
+      throw new Error('Workspace API library niet beschikbaar. Is deze extensie correct geregistreerd in Trimble Connect?');
+    }
+
+    // Verbinden met TC host
+    tcUpdateStep(1, 'loading', 'Verbinden met Trimble Connect...');
+    console.log('[Viewer] Verbinden via', apiLib);
+
+    tcAPI = await apiLib.connect(window.parent, (event, data) => {
+      console.log('[TC Event]', event, data);
+      if (event === 'extension.accessToken') {
+        tcToken = (typeof data === 'string') ? data : (data?.token || data?.accessToken || null);
+      }
+    }, 15000);
+
+    console.log('[Viewer] Verbonden met TC Workspace API');
+    tcUpdateStep(1, 'done', 'Verbonden met Trimble Connect');
+
+    // Stap 2: Project info
+    tcUpdateStep(2, 'loading', 'Projectinfo ophalen...');
+    tcProject = await tcAPI.project.getCurrentProject();
+    console.log('[TC] Project:', JSON.stringify(tcProject));
+    if (!tcProject || !tcProject.id) throw new Error('Kan projectinfo niet ophalen');
+    tcUpdateStep(2, 'done', `Project: ${tcProject.name || tcProject.id}`);
+
+    // Access token ophalen
+    console.log('[TC] Token aanvragen...');
+    const tokenResult = await tcAPI.extension.requestPermission('accesstoken');
+    console.log('[TC] Token resultaat type:', typeof tokenResult, '| waarde preview:', String(tokenResult).substring(0, 30));
+
+    if (typeof tokenResult === 'string' && tokenResult.length > 20) {
+      tcToken = tokenResult;
+    } else if (tokenResult && tokenResult.token) {
+      tcToken = tokenResult.token;
+    } else if (tokenResult === 'pending') {
+      // Wacht op token via event callback
+      console.log('[TC] Token pending, wachten op event...');
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Token timeout na 30s')), 30000);
+        const checkInterval = setInterval(() => {
+          if (tcToken) { clearInterval(checkInterval); clearTimeout(timeout); resolve(); }
+        }, 500);
+      });
+    } else {
+      throw new Error('Toegang geweigerd of geen token ontvangen. Resultaat: ' + String(tokenResult));
+    }
+
+    console.log('[TC] Token ontvangen, lengte:', tcToken.length);
+
+    // Detecteer regio
+    detectRegion();
+    console.log('[TC] Regio:', TC_API_BASE);
+
+    // Stap 3: Mappenstructuur ophalen
+    tcUpdateStep(3, 'loading', 'Mappenstructuur laden...');
+    console.log('[TC] Mappen en bestanden ophalen...');
+    const rootFolderId = tcProject.rootFolderId || tcProject.rootId;
+    if (!rootFolderId) throw new Error('Root folder ID niet gevonden in project data. Keys: ' + Object.keys(tcProject).join(', '));
+    const allFolders = await tcFetchAllFolders(rootFolderId, tcProject.name || 'Project');
+    tcUpdateStep(3, 'done', `${allFolders.length} mappen geladen`);
+
+    // Stap 4: Rechten ophalen per map
+    tcUpdateStep(4, 'loading', 'Rechten ophalen...');
+    const permissionsData = await tcFetchAllPermissions(allFolders);
+    tcUpdateStep(4, 'done', 'Rechten opgehaald');
+
+    // Stap 5: Teamleden ophalen
+    tcUpdateStep(5, 'loading', 'Teamleden laden...');
+    const teamMembers = await tcFetchTeamData();
+    tcUpdateStep(5, 'done', `${teamMembers.length} teamleden geladen`);
+
+    // Data verwerken en app starten
+    processTCData(allFolders, permissionsData, teamMembers);
+    document.getElementById('tcLoadingScreen').style.display = 'none';
+    startApp();
+    return true;
+
+  } catch (err) {
+    console.error('[TC] Extension init mislukt:', err);
+    const errorEl = document.getElementById('tcError');
+    errorEl.style.display = '';
+    errorEl.innerHTML = `<strong>Fout:</strong> ${escHtml(err.message)}<br><br>
+      <details style="margin-top:8px;font-size:11px;"><summary>Technische details</summary>
+      <pre style="white-space:pre-wrap;margin-top:4px;">${escHtml(err.stack || '')}</pre>
+      <p>Project: ${escHtml(JSON.stringify(tcProject))}</p>
+      <p>Token: ${tcToken ? 'ja (' + tcToken.length + ' chars)' : 'nee'}</p>
+      <p>API base: ${TC_API_BASE}</p>
+      </details><br>
+      Je kunt de viewer ook handmatig gebruiken door CSV en Excel bestanden te uploaden.`;
+    document.getElementById('tcFallbackBtn').style.display = '';
+    document.getElementById('tcStatusText').textContent = 'Laden mislukt';
+    return false;
+  }
+}
+
+function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function tcUpdateStep(step, status, text) {
+  const el = document.getElementById('tcStep' + step);
+  if (!el) return;
+  if (status === 'loading') {
+    el.style.opacity = '1';
+    el.innerHTML = `&#9203; ${text}`;
+    document.getElementById('tcStatusText').textContent = text;
+  } else if (status === 'done') {
+    el.innerHTML = `&#9989; ${text}`;
+    el.style.opacity = '1';
+    // Activeer volgende stap
+    const next = document.getElementById('tcStep' + (step + 1));
+    if (next) next.style.opacity = '0.7';
+  }
+}
+
+function tcFallbackToUpload() {
+  document.getElementById('tcLoadingScreen').style.display = 'none';
+  document.getElementById('uploadScreen').style.display = '';
+  isEmbedded = false;
+}
+
+function detectRegion() {
+  if (!tcProject) return;
+  // Probeer regio af te leiden uit project data
+  const loc = (tcProject.location || '').toLowerCase();
+  if (loc.includes('eu') || loc.includes('europe')) TC_API_BASE = TC_API_REGIONS['eu'];
+  else if (loc.includes('ap') || loc.includes('asia')) TC_API_BASE = TC_API_REGIONS['ap'];
+  else if (loc.includes('us') || loc.includes('america')) TC_API_BASE = TC_API_REGIONS['us'];
+  // Standaard blijft EU
+}
+
+// ============================================================
+//  TC REST API CALLS
+// ============================================================
+async function tcFetch(endpoint, options = {}) {
+  const url = TC_API_BASE + endpoint;
+  const resp = await fetch(url, {
+    ...options,
+    headers: {
+      'Authorization': `Bearer ${tcToken}`,
+      'Content-Type': 'application/json',
+      ...(options.headers || {})
+    }
+  });
+  if (!resp.ok) throw new Error(`API fout ${resp.status}: ${endpoint}`);
+  return resp;
+}
+
+// Haal alle mappen recursief op
+async function tcFetchAllFolders(rootFolderId, projectName) {
+  const allFolders = [];
+
+  async function fetchFolderItems(folderId, parentPath) {
+    let start = 0;
+    const pageSize = 50;
+    let hasMore = true;
+
+    while (hasMore) {
+      const resp = await tcFetch(`/folders/${folderId}/items`, {
+        headers: { 'Range': `items=${start}-${start + pageSize - 1}` }
+      });
+      const items = await resp.json();
+
+      for (const item of items) {
+        if (item.type === 'FOLDER' || item.parentId) {
+          const folderPath = parentPath ? `${parentPath}/${item.name}` : item.name;
+          allFolders.push({ id: item.id, name: item.name, path: `${projectName}/${folderPath}`, parentPath });
+          // Recursief submappen ophalen
+          await fetchFolderItems(item.id, folderPath);
+        }
+      }
+
+      // Check paginering
+      const contentRange = resp.headers.get('Content-Range');
+      if (contentRange) {
+        const match = contentRange.match(/items \d+-\d+\/(\d+)/);
+        if (match) {
+          const total = parseInt(match[1]);
+          start += pageSize;
+          hasMore = start < total;
+        } else { hasMore = false; }
+      } else { hasMore = false; }
+    }
+  }
+
+  // Start bij root folder
+  await fetchFolderItems(rootFolderId, '');
+  return allFolders;
+}
+
+// Haal rechten op per map
+async function tcFetchAllPermissions(folders) {
+  const permissions = [];
+  // Batch verwerking om API niet te overbelasten
+  const batchSize = 5;
+  for (let i = 0; i < folders.length; i += batchSize) {
+    const batch = folders.slice(i, i + batchSize);
+    const results = await Promise.all(batch.map(async (folder) => {
+      try {
+        const resp = await tcFetch(`/folders/fs/${folder.id}/permissions`);
+        const perms = await resp.json();
+        return { folder, permissions: perms };
+      } catch (e) {
+        return { folder, permissions: null };
+      }
+    }));
+    permissions.push(...results);
+    // Update voortgang
+    const pct = Math.round(((i + batch.length) / folders.length) * 100);
+    document.getElementById('tcStatusText').textContent = `Rechten ophalen... ${pct}%`;
+  }
+  return permissions;
+}
+
+// Haal teamleden + groepen op
+async function tcFetchTeamData() {
+  // Gebruikers ophalen
+  const users = [];
+  let start = 0;
+  const pageSize = 50;
+  let hasMore = true;
+
+  while (hasMore) {
+    const resp = await tcFetch(`/projects/${tcProject.id}/users`, {
+      headers: { 'Range': `items=${start}-${start + pageSize - 1}` }
+    });
+    const items = await resp.json();
+    users.push(...items);
+
+    const contentRange = resp.headers.get('Content-Range');
+    if (contentRange) {
+      const match = contentRange.match(/items \d+-\d+\/(\d+)/);
+      if (match) { start += pageSize; hasMore = start < parseInt(match[1]); }
+      else { hasMore = false; }
+    } else { hasMore = false; }
+  }
+
+  // Groepen ophalen
+  const groupsResp = await tcFetch(`/groups?projectId=${tcProject.id}`);
+  const groups = await groupsResp.json();
+
+  // Per groep: leden ophalen
+  for (const group of groups) {
+    try {
+      const membersResp = await tcFetch(`/groups/${group.id}/users`);
+      const members = await membersResp.json();
+      group.members = members.map(m => m.id || m.userId);
+    } catch (e) { group.members = []; }
+  }
+
+  // Combineer tot team formaat
+  return users.map(u => {
+    const userGroups = groups.filter(g => g.members.includes(u.id || u.userId)).map(g => g.name);
+    return {
+      name: u.displayName || u.firstName + ' ' + u.lastName || u.email,
+      email: u.email,
+      role: (u.role || 'USER').toUpperCase(),
+      groups: userGroups,
+      status: u.status || 'Active'
+    };
+  });
+}
+
+// Converteer TC API data naar het formaat dat de viewer verwacht
+function processTCData(folders, permissionsData, teamMembers) {
+  // Bouw csvData-achtig formaat
+  const data = [];
+  const groupSet = new Set();
+
+  for (const { folder, permissions } of permissionsData) {
+    const readGroups = [];
+    const fullGroups = [];
+    let inherited = false;
+    let defaultAccess = '';
+
+    if (permissions) {
+      // permissions kan een object zijn met accessEntries / inherited
+      const entries = permissions.accessEntries || permissions.entries || permissions || [];
+      inherited = permissions.inherited || false;
+
+      if (Array.isArray(entries)) {
+        for (const entry of entries) {
+          const name = entry.groupName || entry.userName || entry.name || entry.id;
+          const level = (entry.permission || entry.access || '').toUpperCase();
+          if (!name) continue;
+          if (level === 'FULL' || level === 'WRITE' || level === 'FULL_ACCESS') {
+            fullGroups.push(name); groupSet.add(name);
+          } else if (level === 'READ' || level === 'READ_ONLY' || level === 'READ_ACCESS') {
+            readGroups.push(name); groupSet.add(name);
+          }
+        }
+      }
+    }
+
+    data.push({
+      pad: folder.path,
+      default: defaultAccess,
+      inherited: inherited,
+      read: readGroups,
+      full: fullGroups
+    });
+  }
+
+  allGroups = [...groupSet].sort((a, b) => a.localeCompare(b, 'nl'));
+  csvData = data;
+
+  // Verwerk teamdata
+  if (teamMembers && teamMembers.length) {
+    for (const m of teamMembers) {
+      m.groups.forEach(g => { if (!allGroups.includes(g)) allGroups.push(g); });
+    }
+    allGroups.sort((a, b) => a.localeCompare(b, 'nl'));
+    allUsers = teamMembers.sort((a, b) => a.name.localeCompare(b.name, 'nl'));
+    teamData = teamMembers;
+  }
+
+  buildTree();
+}
+
+// ============================================================
+//  APP INITIALISATIE — detecteer TC of standalone
+// ============================================================
+document.addEventListener('DOMContentLoaded', async () => {
+  const startedInTC = await initTCExtension();
+  if (!startedInTC && !isEmbedded) {
+    // Standalone modus — bestaande upload flow
+    document.getElementById('uploadScreen').style.display = '';
+  }
+});
+let currentView = 'groep';
+let currentSelection = null;
+let folderTree = null;
+
+// ============================================================
+//  CSV PARSING
+// ============================================================
+function parseCSV(text) {
+  const lines = text.split('\n');
+  const headers = parseCSVLine(lines[0]);
+  const records = [];
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const values = parseCSVLine(line);
+    const obj = {};
+    headers.forEach((h, idx) => obj[h.trim()] = (values[idx] || '').trim());
+    records.push(obj);
+  }
+  return records;
+}
+
+function parseCSVLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') {
+      if (inQuotes && line[i+1] === '"') { current += '"'; i++; }
+      else { inQuotes = !inQuotes; }
+    } else if (c === ',' && !inQuotes) {
+      result.push(current); current = '';
+    } else { current += c; }
+  }
+  result.push(current);
+  return result;
+}
+
+function processCSV(records) {
+  const groups = new Set();
+  const data = [];
+  for (const r of records) {
+    const pad = r['Path'] || '';
+    const defaultAccess = r['Default Access'] || '';
+    const inherited = (r['Inherited'] || '').toLowerCase() === 'yes';
+    const readStr = r['Read Access'] || '';
+    const fullStr = r['Full Access'] || '';
+    const readGroups = readStr ? readStr.split(', ').map(s => s.trim()).filter(Boolean) : [];
+    const fullGroups = fullStr ? fullStr.split(', ').map(s => s.trim()).filter(Boolean) : [];
+    readGroups.forEach(g => groups.add(g));
+    fullGroups.forEach(g => groups.add(g));
+    data.push({ pad, default: defaultAccess, inherited, read: readGroups, full: fullGroups });
+  }
+  allGroups = [...groups].sort((a, b) => a.localeCompare(b, 'nl'));
+  csvData = data;
+}
+
+// ============================================================
+//  XLSX PARSING
+// ============================================================
+async function parseXLSX(arrayBuffer) {
+  const zip = await loadZip(arrayBuffer);
+  const sst = [];
+  const sstXml = zip['xl/sharedStrings.xml'];
+  if (sstXml) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(sstXml, 'text/xml');
+    for (const si of doc.getElementsByTagName('si')) {
+      let text = '';
+      for (const t of si.getElementsByTagName('t')) text += t.textContent || '';
+      sst.push(text);
+    }
+  }
+  const sheetXml = zip['xl/worksheets/sheet1.xml'];
+  if (!sheetXml) return [];
+  const doc = new DOMParser().parseFromString(sheetXml, 'text/xml');
+  const result = [];
+  for (const row of doc.getElementsByTagName('row')) {
+    const rowData = {};
+    for (const cell of row.getElementsByTagName('c')) {
+      const ref = cell.getAttribute('r');
+      if (!ref) continue;
+      const col = ref.replace(/[0-9]/g, '');
+      const type = cell.getAttribute('t');
+      const vNode = cell.getElementsByTagName('v')[0];
+      let value = vNode ? vNode.textContent : '';
+      if (type === 's') value = sst[parseInt(value)] || '';
+      else if (type === 'inlineStr') { const t = cell.getElementsByTagName('t')[0]; value = t ? t.textContent : ''; }
+      rowData[col] = value;
+    }
+    if (Object.keys(rowData).length > 0) result.push(rowData);
+  }
+  if (result.length < 2) return [];
+  const headers = result[0];
+  const colKeys = Object.keys(headers);
+  const output = [];
+  for (let i = 1; i < result.length; i++) {
+    const obj = {};
+    let hasValue = false;
+    for (const col of colKeys) {
+      obj[headers[col] || col] = result[i][col] || '';
+      if (result[i][col]) hasValue = true;
+    }
+    if (hasValue) output.push(obj);
+  }
+  return output;
+}
+
+async function loadZip(buffer) {
+  const view = new DataView(buffer);
+  const files = {};
+  const decoder = new TextDecoder();
+  let eocdOffset = buffer.byteLength - 22;
+  while (eocdOffset >= 0 && view.getUint32(eocdOffset, true) !== 0x06054b50) eocdOffset--;
+  if (eocdOffset < 0) throw new Error('Geen geldig ZIP-bestand');
+  const cdOffset = view.getUint32(eocdOffset + 16, true);
+  const cdCount = view.getUint16(eocdOffset + 10, true);
+  let pos = cdOffset;
+  for (let i = 0; i < cdCount; i++) {
+    if (view.getUint32(pos, true) !== 0x02014b50) break;
+    const compMethod = view.getUint16(pos + 10, true);
+    const compSize = view.getUint32(pos + 20, true);
+    const nameLen = view.getUint16(pos + 28, true);
+    const extraLen = view.getUint16(pos + 30, true);
+    const commentLen = view.getUint16(pos + 32, true);
+    const localHeaderOffset = view.getUint32(pos + 42, true);
+    const name = decoder.decode(new Uint8Array(buffer, pos + 46, nameLen));
+    pos += 46 + nameLen + extraLen + commentLen;
+    if (!name.endsWith('.xml')) continue;
+    const lhNameLen = view.getUint16(localHeaderOffset + 26, true);
+    const lhExtraLen = view.getUint16(localHeaderOffset + 28, true);
+    const dataStart = localHeaderOffset + 30 + lhNameLen + lhExtraLen;
+    const rawData = new Uint8Array(buffer, dataStart, compSize);
+    if (compMethod === 0) {
+      files[name] = decoder.decode(rawData);
+    } else if (compMethod === 8) {
+      try {
+        const ds = new DecompressionStream('deflate-raw');
+        const writer = ds.writable.getWriter();
+        writer.write(rawData); writer.close();
+        const reader = ds.readable.getReader();
+        const chunks = [];
+        while (true) { const { done, value } = await reader.read(); if (done) break; chunks.push(value); }
+        const merged = new Uint8Array(chunks.reduce((s, c) => s + c.length, 0));
+        let off = 0; for (const c of chunks) { merged.set(c, off); off += c.length; }
+        files[name] = decoder.decode(merged);
+      } catch(e) {}
+    }
+  }
+  return files;
+}
+
+function processTeam(records) {
+  const users = [];
+  for (const r of records) {
+    const name = r['User name'] || '';
+    const email = r['User email'] || '';
+    const role = r['Role'] || 'USER';
+    const status = r['Membership Status'] || '';
+    const groupStr = r['User group(s)'] || '';
+    if (!name.trim()) continue;
+    const groups = groupStr ? groupStr.split(';').map(s => s.trim()).filter(Boolean) : [];
+    users.push({ name: name.trim(), email, role, groups, status });
+  }
+  allUsers = users.sort((a, b) => a.name.localeCompare(b.name, 'nl'));
+  teamData = users;
+}
+
+// ============================================================
+//  BOOMSTRUCTUUR
+// ============================================================
+function buildTree() {
+  const root = { name: '', children: {}, data: null };
+  for (const record of csvData) {
+    const parts = record.pad.split('/');
+    let node = root;
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (!node.children[part]) node.children[part] = { name: part, children: {}, data: null, path: parts.slice(0, i+1).join('/') };
+      node = node.children[part];
+    }
+    node.data = record;
+  }
+  folderTree = root;
+}
+
+// ============================================================
+//  EFFECTIEVE RECHTEN
+// ============================================================
+function getEffectiveAccess(groupName) {
+  const result = {};
+  const sortedData = [...csvData].sort((a, b) => a.pad.split('/').length - b.pad.split('/').length);
+  for (const record of sortedData) {
+    const pad = record.pad;
+    // Eerst checken of de groep expliciet in Full of Read staat (ongeacht inherited vlag)
+    if (record.full.includes(groupName)) { result[pad] = { level: 'full', inherited: false }; }
+    else if (record.read.includes(groupName)) { result[pad] = { level: 'read', inherited: false }; }
+    else if (record.inherited) {
+      // Inherited=Yes en groep niet expliciet vermeld: erven van parent
+      const parentPath = pad.substring(0, pad.lastIndexOf('/'));
+      if (parentPath && result[parentPath]) result[pad] = { level: result[parentPath].level, inherited: true };
+    }
+  }
+  return result;
+}
+
+// Detecteer de "alle projectleden" groep (impliciet iedereen)
+function getAllMembersGroup() {
+  const candidates = ['alle project leden', 'all project members', 'alle projectleden'];
+  return allGroups.find(g => candidates.includes(g.toLowerCase())) || null;
+}
+
+// Check of alle bovenliggende mappen ook toegang hebben (bereikbaarheid)
+function hasFullParentChain(path, accessMap) {
+  const parts = path.split('/');
+  // Elke ancestor checken (behalve root en de map zelf)
+  for (let i = 2; i < parts.length; i++) {
+    const ancestorPath = parts.slice(0, i).join('/');
+    if (!accessMap[ancestorPath]) return false;
+  }
+  return true;
+}
+
+function getEffectiveAccessForUser(user) {
+  // Admins hebben overal Full Access
+  if (user.role === 'ADMIN') {
+    const result = {};
+    for (const record of csvData) {
+      result[record.pad] = { level: 'full', inherited: false, viaGroups: ['ADMIN'] };
+    }
+    return result;
+  }
+  // Voeg de impliciete "alle project leden" groep toe als die bestaat
+  const allMembersGroup = getAllMembersGroup();
+  const effectiveGroups = [...user.groups];
+  if (allMembersGroup && !effectiveGroups.includes(allMembersGroup) && user.status !== 'Removed') {
+    effectiveGroups.push(allMembersGroup);
+  }
+  const combined = {};
+  for (const group of effectiveGroups) {
+    const ga = getEffectiveAccess(group);
+    for (const [pad, info] of Object.entries(ga)) {
+      if (!combined[pad]) { combined[pad] = { ...info, viaGroups: [group] }; }
+      else {
+        if (info.level === 'full' && combined[pad].level === 'read') { combined[pad].level = 'full'; combined[pad].inherited = info.inherited; }
+        combined[pad].viaGroups.push(group);
+      }
+    }
+  }
+  return combined;
+}
+
+// ============================================================
+//  UI
+// ============================================================
+function switchView(view) {
+  currentView = view;
+  document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  currentSelection = null;
+  document.getElementById('sidebarSearch').value = '';
+  document.getElementById('folderDetail').classList.remove('visible');
+
+  // Dashboard & tree area visibility
+  document.getElementById('dashboardPanel').classList.remove('visible');
+  document.getElementById('treeArea').style.display = 'flex';
+
+  if (view === 'dashboard') {
+    document.getElementById('selectList').style.display = 'none';
+    document.getElementById('sidebarSearch').style.display = 'none';
+    document.getElementById('infoBar').style.display = 'none';
+    document.getElementById('exportBarMappen').style.display = 'none';
+    document.getElementById('memberDetail').style.display = 'none';
+    document.getElementById('treeSearchBar').style.display = 'none';
+    document.getElementById('legendBar').style.display = 'none';
+    document.getElementById('treeArea').style.display = 'none';
+    document.getElementById('dashboardPanel').classList.add('visible');
+    renderDashboard();
+  } else if (view === 'mappen') {
+    document.getElementById('sidebarSearch').style.display = '';
+    document.getElementById('selectList').style.display = 'none';
+    document.getElementById('sidebarSearch').placeholder = 'Zoek map...';
+    document.getElementById('infoBar').style.display = 'none';
+    document.getElementById('exportBarMappen').style.display = 'flex';
+    document.getElementById('memberDetail').style.display = 'none';
+    document.getElementById('treeSearchBar').style.display = 'none';
+    document.getElementById('legendBar').style.display = '';
+    document.getElementById('hideNoAccess').checked = false;
+    document.getElementById('mappenCount').textContent = csvData.length + ' mappen | ' + allGroups.length + ' groepen';
+    renderFolderBrowseTree();
+  } else {
+    document.getElementById('sidebarSearch').style.display = '';
+    document.getElementById('selectList').style.display = '';
+    document.getElementById('sidebarSearch').placeholder = 'Zoek groep of gebruiker...';
+    document.getElementById('exportBarMappen').style.display = 'none';
+    renderSidebar();
+    document.getElementById('treeContainer').innerHTML = '<div class="placeholder">Kies een ' + (view === 'groep' ? 'groep' : 'gebruiker') + '</div>';
+    document.getElementById('infoBar').style.display = 'none';
+    document.getElementById('treeSearchBar').style.display = 'none';
+    document.getElementById('legendBar').style.display = 'none';
+  }
+}
+
+function renderSidebar() {
+  const list = document.getElementById('selectList');
+  const search = document.getElementById('sidebarSearch').value.toLowerCase();
+  if (currentView === 'groep') {
+    const filtered = allGroups.filter(g => g.toLowerCase().includes(search));
+    list.innerHTML = filtered.map(g => {
+      const count = Object.keys(getEffectiveAccessForGroup(g)).length;
+      const isActive = currentSelection === g;
+      return `<div class="select-item ${isActive ? 'active' : ''}" onclick="selectGroup('${escapeHtml(g)}')">
+        <span>${escapeHtml(g)}</span><span class="badge">${count} mappen</span></div>`;
+    }).join('');
+  } else {
+    if (!teamData) { list.innerHTML = '<div style="padding:16px;color:#999;font-size:13px;">Upload de Team Excel om gebruikers te zien.</div>'; return; }
+    const filtered = allUsers.filter(u => u.name.toLowerCase().includes(search) || u.email.toLowerCase().includes(search));
+    const admins = filtered.filter(u => u.role === 'ADMIN' && u.status !== 'Removed');
+    const activeUsers = filtered.filter(u => u.role !== 'ADMIN' && u.status === 'Active');
+    const inactiveUsers = filtered.filter(u => u.status === 'Removed' || u.status === 'Pending Activation');
+    function renderUserItem(u) {
+      const isActive = currentSelection === u.email;
+      const isInactive = u.status === 'Removed' || u.status === 'Pending Activation';
+      const sc = u.status === 'Active' ? '#2d6a4f' : u.status === 'Removed' ? '#c0392b' : '#e67e22';
+      const rb = u.role === 'ADMIN' ? '<span style="background:#ffeaa7;color:#6c5b00;font-size:9px;padding:1px 5px;border-radius:8px;margin-left:4px;">ADMIN</span>' : '';
+      return `<div class="select-item ${isActive?'active':''} ${isInactive?'inactive':''}" onclick="selectUser('${escapeHtml(u.email)}')">
+        <div><div><span class="${isInactive?'user-name':''}">${escapeHtml(u.name)}</span>${rb}</div>
+        <div class="user-groups">${u.groups.length ? escapeHtml(u.groups.slice(0,3).join(', '))+(u.groups.length>3?' +'+(u.groups.length-3):'') : '<em>geen groepen</em>'}</div></div>
+        <span class="badge" style="background:${sc}20;color:${sc}">${u.status||'?'}</span></div>`;
+    }
+    let html = '';
+    const df = window._dashFilter;
+    if ((!df || df === 'admin') && admins.length) { html += `<div class="section-header">Beheerders (${admins.length})</div>` + admins.map(renderUserItem).join(''); }
+    if ((!df || df === 'active') && activeUsers.length) { html += `<div class="section-header">Gebruikers (${activeUsers.length})</div>` + activeUsers.map(renderUserItem).join(''); }
+    if ((!df || df === 'inactive') && inactiveUsers.length) { html += `<div class="section-header">Inactief (${inactiveUsers.length})</div>` + inactiveUsers.map(renderUserItem).join(''); }
+    if (df) { html += `<div style="padding:10px;text-align:center;"><a href="#" onclick="window._dashFilter=null;renderSidebar();return false;" style="color:var(--af-oranje);font-size:12px;font-weight:600;">Toon alle gebruikers</a></div>`; }
+    list.innerHTML = html;
+  }
+}
+
+function filterSidebar() {
+  window._dashFilter = null; // Reset filter bij handmatig zoeken
+  if (currentView === 'mappen') { renderFolderBrowseTree(); }
+  else { renderSidebar(); }
+}
+
+function switchToGroup(name) {
+  currentView = 'groep';
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.textContent.trim().startsWith('Groep')));
+  selectGroup(name);
+  const searchInput = document.getElementById('sidebarSearch');
+  if (searchInput) searchInput.value = '';
+}
+
+function switchToUser(email) {
+  currentView = 'gebruiker';
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.textContent.trim().startsWith('Gebruik')));
+  selectUser(email);
+  const searchInput = document.getElementById('sidebarSearch');
+  if (searchInput) searchInput.value = '';
+}
+
+function getEffectiveAccessForGroup(groupName) {
+  // Start met de directe rechten van deze groep
+  const directAccess = getEffectiveAccess(groupName);
+  const result = {};
+  for (const [pad, info] of Object.entries(directAccess)) {
+    result[pad] = { ...info, viaGroups: [groupName] };
+  }
+  // Voeg ook "Alle project leden" rechten toe (elk groepslid zit daar automatisch in)
+  const allMembersGroup = getAllMembersGroup();
+  if (allMembersGroup && allMembersGroup !== groupName) {
+    const allMembersAccess = getEffectiveAccess(allMembersGroup);
+    for (const [pad, info] of Object.entries(allMembersAccess)) {
+      if (!result[pad]) {
+        result[pad] = { ...info, viaGroups: [allMembersGroup] };
+      } else {
+        // Hoogste recht wint
+        if (info.level === 'full' && result[pad].level === 'read') {
+          result[pad].level = 'full'; result[pad].inherited = info.inherited;
+        }
+        if (!result[pad].viaGroups.includes(allMembersGroup)) result[pad].viaGroups.push(allMembersGroup);
+      }
+    }
+  }
+  return result;
+}
+
+function selectGroup(name) {
+  currentSelection = name;
+  showResults(name, null, null, getEffectiveAccessForGroup(name));
+  renderSidebar();
+}
+
+function selectUser(email) {
+  currentSelection = email;
+  const user = allUsers.find(u => u.email === email);
+  if (!user) return;
+  showResults(user.name, user.email, user.role, getEffectiveAccessForUser(user));
+  renderSidebar();
+}
+
+function showResults(name, email, role, accessMap) {
+  document.getElementById('infoBar').style.display = 'flex';
+  document.getElementById('selectedName').textContent = name;
+  document.getElementById('selectedEmail').textContent = email || '';
+  const rb = document.getElementById('selectedRole');
+  if (role) { rb.style.display = ''; rb.textContent = role; rb.className = 'role-badge ' + (role === 'ADMIN' ? 'admin' : 'user'); }
+  else { rb.style.display = 'none'; }
+  const total = csvData.length;
+  const ac = Object.keys(accessMap).length;
+  const fc = Object.values(accessMap).filter(a => a.level === 'full').length;
+  const rc = Object.values(accessMap).filter(a => a.level === 'read').length;
+  // Tel onbereikbare mappen (heeft rechten maar parent chain is incompleet)
+  let unreachableCount = 0;
+  for (const [pad, info] of Object.entries(accessMap)) {
+    if (!hasFullParentChain(pad, accessMap)) unreachableCount++;
+  }
+  document.getElementById('statFull').textContent = fc - Object.entries(accessMap).filter(([p,a]) => a.level === 'full' && !hasFullParentChain(p, accessMap)).length;
+  document.getElementById('statRead').textContent = rc - Object.entries(accessMap).filter(([p,a]) => a.level === 'read' && !hasFullParentChain(p, accessMap)).length;
+  document.getElementById('statUnreachable').textContent = unreachableCount;
+  document.getElementById('statNone').textContent = total - ac;
+  document.getElementById('treeSearchBar').style.display = '';
+  document.getElementById('legendBar').style.display = '';
+  window._currentAccess = accessMap;
+  window._currentName = name;
+
+  // Toon groeps-/ledeninfo
+  const detailEl = document.getElementById('memberDetail');
+  if (currentView === 'gebruiker' && email) {
+    const user = allUsers.find(u => u.email === email);
+    if (user && user.groups.length) {
+      detailEl.innerHTML = '<strong>Lid van:</strong> ' + user.groups.map(g => `<span onclick="switchToGroup('${escapeHtml(g)}')" style="background:#f5f0ea;padding:2px 8px;border-radius:10px;font-size:11px;margin:2px;display:inline-block;cursor:pointer;transition:background 0.2s;" onmouseover="this.style.background='#d4821a33'" onmouseout="this.style.background='#f5f0ea'">${escapeHtml(g)}</span>`).join(' ');
+      detailEl.style.display = '';
+    } else { detailEl.style.display = 'none'; }
+  } else if (currentView === 'groep' && name && teamData) {
+    const leden = allUsers.filter(u => u.groups.includes(name) && u.status !== 'Removed');
+    if (leden.length) {
+      detailEl.innerHTML = '<strong>Leden (' + leden.length + '):</strong> ' + leden.map(u => {
+        const rb = u.role === 'ADMIN' ? ' <span style="background:#ffeaa7;color:#6c5b00;font-size:9px;padding:0 4px;border-radius:6px;">ADMIN</span>' : '';
+        return `<span onclick="switchToUser('${escapeHtml(u.email)}')" style="background:#f5f0ea;padding:2px 8px;border-radius:10px;font-size:11px;margin:2px;display:inline-block;cursor:pointer;transition:background 0.2s;" onmouseover="this.style.background='#d4821a33'" onmouseout="this.style.background='#f5f0ea'">${escapeHtml(u.name)}${rb}</span>`;
+      }).join(' ');
+      detailEl.style.display = '';
+    } else { detailEl.style.display = 'none'; }
+  } else { detailEl.style.display = 'none'; }
+
+  renderTree();
+}
+
+function renderTree() {
+  const container = document.getElementById('treeContainer');
+  const accessMap = window._currentAccess;
+  if (!accessMap || !folderTree) return;
+  const hideNoAccess = document.getElementById('hideNoAccess').checked;
+  const searchTerm = document.querySelector('.tree-search input')?.value?.toLowerCase() || '';
+
+  function renderNode(node, depth) {
+    const childKeys = Object.keys(node.children).sort((a, b) => a.localeCompare(b, 'nl'));
+    if (!childKeys.length && !node.data) return '';
+    let html = '';
+    for (const key of childKeys) {
+      const child = node.children[key];
+      const path = child.path;
+      const access = accessMap[path];
+      const level = access ? access.level : 'none';
+      const isInherited = access ? access.inherited : false;
+      const hasChildren = Object.keys(child.children).length > 0;
+      const childrenHtml = hasChildren ? renderNode(child, depth + 1) : '';
+      // Check of er daadwerkelijk zichtbare kinderen zijn (met access-full of access-read)
+      const hasAccessibleChildren = childrenHtml && (childrenHtml.includes('access-full') || childrenHtml.includes('access-read') || childrenHtml.includes('access-unreachable'));
+      if (searchTerm && !path.toLowerCase().includes(searchTerm) && !childrenHtml) continue;
+      // Bij verbergen: skip als geen toegang EN geen kinderen met toegang
+      if (hideNoAccess && level === 'none' && !hasAccessibleChildren) continue;
+      const isContainer = (level === 'none' && hasAccessibleChildren);
+      // Check bereikbaarheid: heeft deze map rechten maar ontbreken er rechten in de bovenliggende mappen?
+      const isReachable = (level !== 'none') ? hasFullParentChain(path, accessMap) : true;
+      const isUnreachable = (level !== 'none' && !isReachable);
+      let accessClass;
+      if (isUnreachable) accessClass = 'access-unreachable';
+      else if (isContainer) accessClass = 'access-container';
+      else if (level !== 'none') accessClass = 'access-' + level + (isInherited ? ' access-inherited' : '');
+      else accessClass = 'access-none';
+      const isOpen = depth < 1 || searchTerm;
+      let badge = '';
+      let extraBadge = '';
+      let folderIcon = hasChildren ? (isOpen ? '&#128194;' : '&#128193;') : '&#128193;';
+      if (level === 'full') badge = 'Full Access';
+      else if (level === 'read') badge = 'Read Access';
+      else if (level === 'none' && !isContainer) { badge = 'Geen toegang'; folderIcon = '&#128683;'; }
+      // Onbereikbare map: waarschuwing toevoegen
+      if (isUnreachable) { extraBadge = '<span class="link-only-badge">&#9888; Alleen via directe link</span>'; folderIcon = '&#9888;&#65039;'; }
+      // Container map: notitie dat gebruiker deze map niet ziet
+      let containerNote = '';
+      if (isContainer) containerNote = '<span class="container-note">(verborgen voor gebruiker)</span>';
+      // "Via Alle projectleden" label in groepsweergave
+      let viaLabel = '';
+      if (access && access.viaGroups && currentView === 'groep' && currentSelection) {
+        const allMembersGroup = getAllMembersGroup();
+        const isOnlyViaAllMembers = allMembersGroup && access.viaGroups.length === 1 && access.viaGroups[0] === allMembersGroup;
+        if (isOnlyViaAllMembers) viaLabel = `<span style="font-size:10px;color:#888;margin-left:6px;font-style:italic;">via ${escapeHtml(allMembersGroup)}</span>`;
+      }
+      let viaText = '';
+      if (access && access.viaGroups) viaText = ` title="Via: ${access.viaGroups.join(', ')}"`;
+
+      html += `<div class="tree-node">
+        <div class="tree-row ${accessClass}" onclick="toggleNode(this)"${viaText}>
+          <span class="toggle">${hasChildren ? (isOpen ? '&#9660;' : '&#9654;') : ''}</span>
+          <span class="folder-icon">${folderIcon}</span>
+          <span class="folder-name">${escapeHtml(child.name)}</span>${containerNote}
+          ${badge ? `<span class="access-badge">${badge}</span>` : ''}${viaLabel}${extraBadge}
+        </div>
+        ${hasChildren ? `<div class="children" style="display:${isOpen?'block':'none'}">${childrenHtml}</div>` : ''}
+      </div>`;
+    }
+    return html;
+  }
+  // Toggle class voor verbergen
+  container.classList.toggle('hide-no-access', hideNoAccess);
+  container.innerHTML = renderNode(folderTree, 0) || '<div class="placeholder">Geen mappen met toegang</div>';
+}
+
+function toggleNode(el) {
+  const children = el.nextElementSibling;
+  if (!children || !children.classList.contains('children')) return;
+  const isOpen = children.style.display !== 'none';
+  children.style.display = isOpen ? 'none' : 'block';
+  const toggle = el.querySelector('.toggle');
+  if (toggle) toggle.innerHTML = isOpen ? '&#9654;' : '&#9660;';
+}
+
+function filterTree(value) { renderTree(); }
+function escapeHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function escapeXml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// ============================================================
+//  MAPPEN-BROWSE MODUS
+// ============================================================
+function renderFolderBrowseTree() {
+  const container = document.getElementById('treeContainer');
+  if (!folderTree) return;
+  const searchTerm = document.getElementById('sidebarSearch').value.toLowerCase();
+
+  function renderNode(node, depth) {
+    const childKeys = Object.keys(node.children).sort((a, b) => a.localeCompare(b, 'nl'));
+    if (!childKeys.length && !node.data) return '';
+    let html = '';
+    for (const key of childKeys) {
+      const child = node.children[key];
+      const path = child.path;
+      const hasChildren = Object.keys(child.children).length > 0;
+      const childrenHtml = hasChildren ? renderNode(child, depth + 1) : '';
+      if (searchTerm && !path.toLowerCase().includes(searchTerm) && !childrenHtml) continue;
+      const isOpen = depth < 1 || searchTerm;
+      const folderIcon = hasChildren ? (isOpen ? '&#128194;' : '&#128193;') : '&#128193;';
+
+      // Tel hoeveel groepen toegang hebben
+      const record = csvData.find(r => r.pad === path);
+      let accessSummary = '';
+      if (record) {
+        const fc = record.full.length;
+        const rc = record.read.length;
+        const parts = [];
+        if (fc) parts.push(`${fc} schrijven`);
+        if (rc) parts.push(`${rc} lezen`);
+        if (parts.length) accessSummary = parts.join(', ');
+      }
+
+      html += `<div class="tree-node">
+        <div class="tree-row" onclick="toggleNode(this)" ondblclick="event.stopPropagation();showFolderDetail('${escapeHtml(path)}',this)" style="cursor:pointer;">
+          <span class="toggle">${hasChildren ? (isOpen ? '&#9660;' : '&#9654;') : ''}</span>
+          <span class="folder-icon">${folderIcon}</span>
+          <span class="folder-name">${escapeHtml(child.name)}</span>
+          ${accessSummary ? `<span class="access-badge" style="background:#e8e0d8;color:#666;font-size:10px;">${accessSummary}</span>` : ''}
+          <span class="folder-info-btn" onclick="event.stopPropagation();showFolderDetail('${escapeHtml(path)}',this.parentElement)" title="Bekijk wie toegang heeft">&#128101; Wie heeft toegang?</span>
+        </div>
+        ${hasChildren ? `<div class="children" style="display:${isOpen?'block':'none'}">${childrenHtml}</div>` : ''}
+      </div>`;
+    }
+    return html;
+  }
+
+  container.innerHTML = renderNode(folderTree, 0) || '<div class="placeholder">Geen mappen gevonden</div>';
+}
+
+function showFolderDetail(path, rowEl) {
+  // Highlight geselecteerde rij
+  document.querySelectorAll('.tree-row.selected').forEach(el => el.classList.remove('selected'));
+  if (rowEl) rowEl.classList.add('selected');
+
+  const panel = document.getElementById('folderDetail');
+  const delen = path.split('/');
+  const mapnaam = delen[delen.length - 1];
+  const mappad = '/' + delen.slice(1).join('/');
+
+  document.getElementById('folderDetailName').textContent = mapnaam;
+  document.getElementById('folderDetailPath').textContent = mappad;
+
+  // Zoek welke groepen toegang hebben
+  const record = csvData.find(r => r.pad === path);
+  let html = '';
+
+  // Groepen met Full Access
+  if (record && record.full.length) {
+    html += '<div class="folder-detail-section"><h4>Schrijven / Full Access (' + record.full.length + ')</h4>';
+    for (const g of record.full.sort((a, b) => a.localeCompare(b, 'nl'))) {
+      html += `<div class="folder-detail-item" onclick="switchToGroup('${escapeHtml(g)}')">
+        <span>${escapeHtml(g)}</span>
+        <span class="access-tag full">S</span>
+      </div>`;
+    }
+    html += '</div>';
+  }
+
+  // Groepen met Read Access
+  if (record && record.read.length) {
+    html += '<div class="folder-detail-section"><h4>Lezen / Read Access (' + record.read.length + ')</h4>';
+    for (const g of record.read.sort((a, b) => a.localeCompare(b, 'nl'))) {
+      html += `<div class="folder-detail-item" onclick="switchToGroup('${escapeHtml(g)}')">
+        <span>${escapeHtml(g)}</span>
+        <span class="access-tag read">L</span>
+      </div>`;
+    }
+    html += '</div>';
+  }
+
+  // Gebruikers (via hun groepen)
+  if (teamData && allUsers.length) {
+    const usersFullAccess = [];
+    const usersReadAccess = [];
+    const usersAdmin = [];
+
+    for (const u of allUsers) {
+      if (u.status === 'Removed') continue;
+      if (u.role === 'ADMIN') { usersAdmin.push(u); continue; }
+      const userAccess = getEffectiveAccessForUser(u);
+      const a = userAccess[path];
+      if (a && a.level === 'full') usersFullAccess.push({ ...u, viaGroups: a.viaGroups });
+      else if (a && a.level === 'read') usersReadAccess.push({ ...u, viaGroups: a.viaGroups });
+    }
+
+    if (usersAdmin.length) {
+      html += '<div class="folder-detail-section"><h4>Beheerders — altijd Full Access (' + usersAdmin.length + ')</h4>';
+      for (const u of usersAdmin) {
+        html += `<div class="folder-detail-item" onclick="switchToUser('${escapeHtml(u.email)}')">
+          <span>${escapeHtml(u.name)} <span class="admin-badge">ADMIN</span></span>
+          <span class="access-tag full">S</span>
+        </div>`;
+      }
+      html += '</div>';
+    }
+
+    if (usersFullAccess.length) {
+      html += '<div class="folder-detail-section"><h4>Gebruikers — Schrijven (' + usersFullAccess.length + ')</h4>';
+      for (const u of usersFullAccess.sort((a, b) => a.name.localeCompare(b.name, 'nl'))) {
+        const via = u.viaGroups ? ` title="Via: ${u.viaGroups.join(', ')}"` : '';
+        html += `<div class="folder-detail-item"${via} onclick="switchToUser('${escapeHtml(u.email)}')">
+          <span>${escapeHtml(u.name)}</span>
+          <span class="access-tag full">S</span>
+        </div>`;
+      }
+      html += '</div>';
+    }
+
+    if (usersReadAccess.length) {
+      html += '<div class="folder-detail-section"><h4>Gebruikers — Lezen (' + usersReadAccess.length + ')</h4>';
+      for (const u of usersReadAccess.sort((a, b) => a.name.localeCompare(b.name, 'nl'))) {
+        const via = u.viaGroups ? ` title="Via: ${u.viaGroups.join(', ')}"` : '';
+        html += `<div class="folder-detail-item"${via} onclick="switchToUser('${escapeHtml(u.email)}')">
+          <span>${escapeHtml(u.name)}</span>
+          <span class="access-tag read">L</span>
+        </div>`;
+      }
+      html += '</div>';
+    }
+  }
+
+  if (!html) {
+    html = '<div class="folder-detail-section"><p style="color:#999;font-size:12px;">Geen specifieke rechten ingesteld op deze map.</p></div>';
+  }
+
+  // Inherited info
+  if (record && record.inherited) {
+    html += '<div class="folder-detail-section" style="background:#fffbe6;"><p style="font-size:11px;color:#8a6d3b;margin:0;">&#9432; Deze map erft rechten van een bovenliggende map.</p></div>';
+  }
+
+  document.getElementById('folderDetailContent').innerHTML = html;
+  panel.classList.add('visible');
+}
+
+// ============================================================
+//  EXCEL EXPORT — rechtenmatrix
+// ============================================================
+function exportToExcel() {
+  if (!csvData || !csvData.length) return;
+  const datum = new Date().toISOString().slice(0, 10);
+  const projectNaam = csvData[0].pad.split('/')[0] || 'Project';
+  const veiligNaam = projectNaam.replace(/[^a-zA-Z0-9 _-]/g, '_');
+
+  // Bereken alle effectieve rechten per groep
+  const groepAccessMaps = {};
+  for (const g of allGroups) { groepAccessMaps[g] = getEffectiveAccessForGroup(g); }
+
+  // Bereken alle effectieve rechten per gebruiker (als teamData beschikbaar)
+  const userAccessMaps = {};
+  if (teamData && allUsers.length) {
+    for (const u of allUsers) {
+      if (u.status === 'Removed') continue;
+      userAccessMaps[u.name] = { email: u.email, role: u.role, groups: u.groups, access: getEffectiveAccessForUser(u) };
+    }
+  }
+
+  // Alle unieke mappaden gesorteerd
+  const allePaden = csvData.map(r => r.pad).sort();
+
+  function escCell(v) { return escapeXml(String(v)); }
+
+  // XML Spreadsheet opbouwen
+  const fullBg = '#C6EFCE'; const fullFg = '#006100';
+  const readBg = '#BDD7EE'; const readFg = '#003F72';
+  const noneBg = '#FFC7CE'; const noneFg = '#9C0006';
+  const hdrBg = '#222222';
+  const oranjeBg = '#D4821A';
+  const groepHdrBg = '#4472C4';
+  const userHdrBg = '#548235';
+
+  let x = '<?xml version="1.0" encoding="UTF-8"?>\n<?mso-application progid="Excel.Sheet"?>\n';
+  x += '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n';
+
+  // Stijlen
+  x += '<Styles>\n';
+  x += '<Style ss:ID="Default"><Font ss:FontName="Calibri" ss:Size="10"/></Style>\n';
+  x += `<Style ss:ID="t"><Font ss:Bold="1" ss:Size="14" ss:FontName="Calibri" ss:Color="${oranjeBg}"/></Style>\n`;
+  x += `<Style ss:ID="s"><Font ss:Size="10" ss:FontName="Calibri"/></Style>\n`;
+  x += `<Style ss:ID="sb"><Font ss:Size="10" ss:FontName="Calibri" ss:Bold="1"/></Style>\n`;
+  x += `<Style ss:ID="h"><Font ss:Bold="1" ss:Color="#FFFFFF" ss:Size="9" ss:FontName="Calibri"/><Interior ss:Color="${hdrBg}" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Bottom" ss:Rotate="90" ss:WrapText="1"/></Style>\n`;
+  x += `<Style ss:ID="hg"><Font ss:Bold="1" ss:Color="#FFFFFF" ss:Size="9" ss:FontName="Calibri"/><Interior ss:Color="${groepHdrBg}" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Bottom" ss:Rotate="90" ss:WrapText="1"/></Style>\n`;
+  x += `<Style ss:ID="hu"><Font ss:Bold="1" ss:Color="#FFFFFF" ss:Size="9" ss:FontName="Calibri"/><Interior ss:Color="${userHdrBg}" ss:Pattern="Solid"/><Alignment ss:Horizontal="Center" ss:Vertical="Bottom" ss:Rotate="90" ss:WrapText="1"/></Style>\n`;
+  x += `<Style ss:ID="mp"><Font ss:FontName="Calibri" ss:Size="9"/><Alignment ss:WrapText="0"/></Style>\n`;
+  x += `<Style ss:ID="mn"><Font ss:FontName="Calibri" ss:Size="9" ss:Bold="1"/></Style>\n`;
+  x += `<Style ss:ID="full"><Interior ss:Color="${fullBg}" ss:Pattern="Solid"/><Font ss:Color="${fullFg}" ss:Bold="1" ss:Size="9" ss:FontName="Calibri"/><Alignment ss:Horizontal="Center"/></Style>\n`;
+  x += `<Style ss:ID="read"><Interior ss:Color="${readBg}" ss:Pattern="Solid"/><Font ss:Color="${readFg}" ss:Size="9" ss:FontName="Calibri"/><Alignment ss:Horizontal="Center"/></Style>\n`;
+  x += `<Style ss:ID="none"><Interior ss:Color="${noneBg}" ss:Pattern="Solid"/><Font ss:Color="${noneFg}" ss:Size="8" ss:FontName="Calibri"/><Alignment ss:Horizontal="Center"/></Style>\n`;
+  x += '<Style ss:ID="empty"><Interior ss:Color="#F9F9F9" ss:Pattern="Solid"/><Font ss:Color="#CCCCCC" ss:Size="8" ss:FontName="Calibri"/><Alignment ss:Horizontal="Center"/></Style>\n';
+  // Stijlen voor samenvattingsblad
+  x += `<Style ss:ID="sf"><Interior ss:Color="${fullBg}" ss:Pattern="Solid"/><Font ss:Size="10" ss:FontName="Calibri" ss:Bold="1" ss:Color="${fullFg}"/></Style>\n`;
+  x += `<Style ss:ID="sr"><Interior ss:Color="${readBg}" ss:Pattern="Solid"/><Font ss:Size="10" ss:FontName="Calibri" ss:Bold="1" ss:Color="${readFg}"/></Style>\n`;
+  x += `<Style ss:ID="sn"><Interior ss:Color="#F2F2F2" ss:Pattern="Solid"/><Font ss:Size="10" ss:FontName="Calibri" ss:Color="#999999"/></Style>\n`;
+  x += `<Style ss:ID="leg"><Font ss:Size="9" ss:FontName="Calibri"/></Style>\n`;
+  x += '</Styles>\n';
+
+  // ========== BLAD 1: Rechtenmatrix Groepen ==========
+  const sortedGroups = [...allGroups].sort();
+  x += `<Worksheet ss:Name="Matrix Groepen">\n<Table ss:DefaultRowHeight="15">\n`;
+  x += '<Column ss:Width="250"/><Column ss:Width="150"/>';
+  for (let i = 0; i < sortedGroups.length; i++) x += '<Column ss:Width="30"/>';
+  x += '\n';
+
+  // Koprij met groepsnamen (verticaal)
+  x += '<Row ss:Height="180"><Cell ss:StyleID="sb"><Data ss:Type="String">Mappad</Data></Cell>';
+  x += '<Cell ss:StyleID="sb"><Data ss:Type="String">Mapnaam</Data></Cell>';
+  for (const g of sortedGroups) {
+    x += `<Cell ss:StyleID="hg"><Data ss:Type="String">${escCell(g)}</Data></Cell>`;
+  }
+  x += '</Row>\n';
+
+  // Data rijen: elke map is een rij
+  for (const pad of allePaden) {
+    const delen = pad.split('/');
+    const mappad = '/' + delen.slice(1).join('/');
+    const mapnaam = delen[delen.length - 1];
+    const diepte = delen.length - 1;
+    const indent = '\u00A0\u00A0'.repeat(diepte);
+
+    x += '<Row>';
+    x += `<Cell ss:StyleID="mp"><Data ss:Type="String">${escCell(mappad)}</Data></Cell>`;
+    x += `<Cell ss:StyleID="mn"><Data ss:Type="String">${escCell(indent + mapnaam)}</Data></Cell>`;
+
+    for (const g of sortedGroups) {
+      const access = groepAccessMaps[g][pad];
+      if (!access) {
+        x += '<Cell ss:StyleID="empty"><Data ss:Type="String">-</Data></Cell>';
+      } else if (access.level === 'full') {
+        x += '<Cell ss:StyleID="full"><Data ss:Type="String">S</Data></Cell>';
+      } else {
+        x += '<Cell ss:StyleID="read"><Data ss:Type="String">L</Data></Cell>';
+      }
+    }
+    x += '</Row>\n';
+  }
+  x += '</Table>\n</Worksheet>\n';
+
+  // ========== BLAD 2: Rechtenmatrix Gebruikers ==========
+  if (teamData && Object.keys(userAccessMaps).length) {
+    const sortedUsers = Object.keys(userAccessMaps).sort();
+    x += `<Worksheet ss:Name="Matrix Gebruikers">\n<Table ss:DefaultRowHeight="15">\n`;
+    x += '<Column ss:Width="250"/><Column ss:Width="150"/>';
+    for (let i = 0; i < sortedUsers.length; i++) x += '<Column ss:Width="30"/>';
+    x += '\n';
+
+    // Koprij
+    x += '<Row ss:Height="180"><Cell ss:StyleID="sb"><Data ss:Type="String">Mappad</Data></Cell>';
+    x += '<Cell ss:StyleID="sb"><Data ss:Type="String">Mapnaam</Data></Cell>';
+    for (const u of sortedUsers) {
+      const info = userAccessMaps[u];
+      const label = info.role === 'ADMIN' ? u + ' (ADMIN)' : u;
+      x += `<Cell ss:StyleID="hu"><Data ss:Type="String">${escCell(label)}</Data></Cell>`;
+    }
+    x += '</Row>\n';
+
+    for (const pad of allePaden) {
+      const delen = pad.split('/');
+      const mappad = '/' + delen.slice(1).join('/');
+      const mapnaam = delen[delen.length - 1];
+      const diepte = delen.length - 1;
+      const indent = '\u00A0\u00A0'.repeat(diepte);
+
+      x += '<Row>';
+      x += `<Cell ss:StyleID="mp"><Data ss:Type="String">${escCell(mappad)}</Data></Cell>`;
+      x += `<Cell ss:StyleID="mn"><Data ss:Type="String">${escCell(indent + mapnaam)}</Data></Cell>`;
+
+      for (const u of sortedUsers) {
+        const access = userAccessMaps[u].access[pad];
+        if (!access) {
+          x += '<Cell ss:StyleID="empty"><Data ss:Type="String">-</Data></Cell>';
+        } else if (access.level === 'full') {
+          x += '<Cell ss:StyleID="full"><Data ss:Type="String">S</Data></Cell>';
+        } else {
+          x += '<Cell ss:StyleID="read"><Data ss:Type="String">L</Data></Cell>';
+        }
+      }
+      x += '</Row>\n';
+    }
+    x += '</Table>\n</Worksheet>\n';
+  }
+
+  // ========== BLAD 3: Overzicht per groep ==========
+  x += `<Worksheet ss:Name="Overzicht Groepen">\n<Table>\n`;
+  x += '<Column ss:Width="250"/><Column ss:Width="100"/><Column ss:Width="100"/><Column ss:Width="100"/><Column ss:Width="80"/>\n';
+  x += `<Row><Cell ss:StyleID="t"><Data ss:Type="String">Rechtenmatrix: ${escCell(projectNaam)}</Data></Cell></Row>\n`;
+  x += `<Row><Cell ss:StyleID="s"><Data ss:Type="String">Gegenereerd: ${datum} | At Fielt - bimplementeer.nl</Data></Cell></Row>\n`;
+  x += '<Row></Row>\n';
+  x += '<Row>';
+  ['Groep', 'Full Access (S)', 'Read Access (L)', 'Geen toegang', '% Toegang'].forEach(h => {
+    x += `<Cell ss:StyleID="sb"><Data ss:Type="String">${escCell(h)}</Data></Cell>`;
+  });
+  x += '</Row>\n';
+
+  for (const g of sortedGroups) {
+    const am = groepAccessMaps[g];
+    const fc = Object.values(am).filter(a => a.level === 'full').length;
+    const rc = Object.values(am).filter(a => a.level === 'read').length;
+    const nc = allePaden.length - fc - rc;
+    const pct = allePaden.length ? Math.round((fc + rc) / allePaden.length * 100) : 0;
+    x += '<Row>';
+    x += `<Cell ss:StyleID="s"><Data ss:Type="String">${escCell(g)}</Data></Cell>`;
+    x += `<Cell ss:StyleID="sf"><Data ss:Type="Number">${fc}</Data></Cell>`;
+    x += `<Cell ss:StyleID="sr"><Data ss:Type="Number">${rc}</Data></Cell>`;
+    x += `<Cell ss:StyleID="sn"><Data ss:Type="Number">${nc}</Data></Cell>`;
+    x += `<Cell ss:StyleID="s"><Data ss:Type="String">${pct}%</Data></Cell>`;
+    x += '</Row>\n';
+  }
+  x += '</Table>\n</Worksheet>\n';
+
+  // ========== BLAD 4: Legenda ==========
+  x += '<Worksheet ss:Name="Legenda">\n<Table>\n';
+  x += '<Column ss:Width="120"/><Column ss:Width="300"/>\n';
+  x += `<Row><Cell ss:StyleID="t"><Data ss:Type="String">Legenda Rechtenmatrix</Data></Cell></Row>\n`;
+  x += '<Row></Row>\n';
+  x += `<Row><Cell ss:StyleID="sb"><Data ss:Type="String">Symbool</Data></Cell><Cell ss:StyleID="sb"><Data ss:Type="String">Betekenis</Data></Cell></Row>\n`;
+  x += `<Row><Cell ss:StyleID="full"><Data ss:Type="String">S</Data></Cell><Cell ss:StyleID="s"><Data ss:Type="String">Schrijven (Full Access) — kan bestanden toevoegen, wijzigen en verwijderen</Data></Cell></Row>\n`;
+  x += `<Row><Cell ss:StyleID="read"><Data ss:Type="String">L</Data></Cell><Cell ss:StyleID="s"><Data ss:Type="String">Lezen (Read Access) — kan bestanden bekijken en downloaden</Data></Cell></Row>\n`;
+  x += `<Row><Cell ss:StyleID="none"><Data ss:Type="String">-</Data></Cell><Cell ss:StyleID="s"><Data ss:Type="String">Geen toegang — map is niet zichtbaar voor deze groep/gebruiker</Data></Cell></Row>\n`;
+  x += '<Row></Row>\n';
+  x += `<Row><Cell ss:StyleID="sb"><Data ss:Type="String">Kleur kolom</Data></Cell><Cell ss:StyleID="sb"><Data ss:Type="String">Betekenis</Data></Cell></Row>\n`;
+  x += `<Row><Cell ss:StyleID="hg"><Data ss:Type="String">Blauw</Data></Cell><Cell ss:StyleID="s"><Data ss:Type="String">Groep</Data></Cell></Row>\n`;
+  x += `<Row><Cell ss:StyleID="hu"><Data ss:Type="String">Groen</Data></Cell><Cell ss:StyleID="s"><Data ss:Type="String">Gebruiker</Data></Cell></Row>\n`;
+  x += '<Row></Row>\n';
+  x += `<Row><Cell ss:StyleID="s"><Data ss:Type="String">Gegenereerd met At Fielt Rechtenviewer — bimplementeer.nl</Data></Cell></Row>\n`;
+  x += '</Table>\n</Worksheet>\n';
+
+  x += '</Workbook>';
+
+  const blob = new Blob([x], { type: 'application/vnd.ms-excel' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `rechtenmatrix_${veiligNaam}_${datum}.xls`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ============================================================
+//  FILE UPLOAD
+// ============================================================
+function setupFileHandler(zoneId, inputId, handler) {
+  const zone = document.getElementById(zoneId);
+  const input = document.getElementById(inputId);
+  input.addEventListener('change', handler);
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    const dt = new DataTransfer(); dt.items.add(file);
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change'));
+  });
+}
+
+let csvProjectName = '';
+let teamProjectName = '';
+
+setupFileHandler('dropZone1', 'csvFile', async function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const text = await file.text();
+  processCSV(parseCSV(text));
+  buildTree();
+  csvProjectName = csvData[0]?.pad.split('/')[0] || '';
+  document.getElementById('step1status').querySelector('.status').textContent = `${csvData.length} mappen, ${allGroups.length} groepen geladen — Project: ${csvProjectName}`;
+  document.getElementById('step1status').querySelector('.status').className = 'status ok';
+  document.getElementById('dropZone1').querySelector('.icon').textContent = '✅';
+  document.getElementById('dropZone1').querySelector('div:last-of-type').innerHTML = `<strong>${escapeHtml(file.name)}</strong><br><label style="color:var(--af-oranje);cursor:pointer;font-size:12px;">Ander bestand kiezen</label>`;
+  checkReady();
+});
+
+setupFileHandler('dropZone2', 'xlsxFile', async function(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    const records = await parseXLSX(await file.arrayBuffer());
+    processTeam(records);
+    // Probeer projectnaam uit bestandsnaam te halen
+    // Trimble format: "Mappenstructuur_TEAM_datum.xlsx" (bevat geen projectnaam)
+    // Of: "ProjectNaam_datum.xlsx"
+    // Negeer standaard Trimble exports met _TEAM_ in de naam
+    const fnClean = file.name.replace(/\.\w+$/, '');
+    if (/_TEAM_/i.test(fnClean)) {
+      teamProjectName = ''; // Standaard Trimble export, geen projectnaam in bestandsnaam
+    } else {
+      const fnMatch = fnClean.match(/^(.+?)[_ ]\d{14}/i);
+      teamProjectName = fnMatch ? fnMatch[1].replace(/_/g, ' ') : '';
+    }
+    const active = allUsers.filter(u => u.status === 'Active').length;
+    document.getElementById('step2status').querySelector('.status').textContent = `${allUsers.length} gebruikers geladen (${active} actief)` + (teamProjectName ? ` — Project: ${teamProjectName}` : '');
+    document.getElementById('step2status').querySelector('.status').className = 'status ok';
+    document.getElementById('dropZone2').querySelector('.icon').textContent = '✅';
+    document.getElementById('dropZone2').querySelector('div:last-of-type').innerHTML = `<strong>${escapeHtml(file.name)}</strong><br><label style="color:var(--af-oranje);cursor:pointer;font-size:12px;">Ander bestand kiezen</label>`;
+    // Check mismatch als beide geladen zijn
+    checkProjectMismatch();
+  } catch(err) {
+    document.getElementById('step2status').querySelector('.status').textContent = 'Fout: ' + err.message;
+  }
+  checkReady();
+});
+
+function checkProjectMismatch() {
+  const warningEl = document.getElementById('projectMismatchWarning');
+  if (!csvProjectName || !teamProjectName) { warningEl.style.display = 'none'; return; }
+  // Vergelijk projectnamen (case-insensitive, spaties/underscores negeren)
+  const normalize = s => s.toLowerCase().replace(/[_ -]/g, '').replace(/^mappenstructuur/, '');
+  if (normalize(csvProjectName) !== normalize(teamProjectName)) {
+    warningEl.innerHTML = `<strong>&#9888; Let op:</strong> De bestanden lijken uit verschillende projecten te komen.<br>CSV: <strong>${escapeHtml(csvProjectName)}</strong> — Team Excel: <strong>${escapeHtml(teamProjectName)}</strong><br>Controleer of je de juiste bestanden hebt geüpload.`;
+    warningEl.style.display = '';
+  } else {
+    warningEl.style.display = 'none';
+  }
+}
+
+function checkReady() {
+  const btn = document.getElementById('startBtn');
+  if (csvData) { btn.disabled = false; btn.style.opacity = '1'; }
+  checkProjectMismatch();
+}
+
+function startApp() {
+  document.getElementById('uploadScreen').style.display = 'none';
+  document.getElementById('tcLoadingScreen').style.display = 'none';
+  document.getElementById('app').classList.add('visible');
+  const projectNaam = tcProject ? (tcProject.name || tcProject.id) : (csvData[0]?.pad.split('/')[0] || 'Onbekend project');
+  document.getElementById('projectName').textContent = projectNaam;
+  // In TC-modus: verberg terug-knop en maak header compacter
+  if (isEmbedded) {
+    const backBtn = document.querySelector('#app .header button');
+    if (backBtn) backBtn.style.display = 'none';
+  }
+  // Start in dashboard-view
+  currentView = 'dashboard';
+  document.querySelectorAll('.view-tab').forEach(t => t.classList.toggle('active', t.textContent.trim() === 'Dashboard'));
+  document.getElementById('selectList').style.display = 'none';
+  document.getElementById('sidebarSearch').style.display = 'none';
+  document.getElementById('infoBar').style.display = 'none';
+  document.getElementById('exportBarMappen').style.display = 'none';
+  document.getElementById('treeSearchBar').style.display = 'none';
+  document.getElementById('legendBar').style.display = 'none';
+  document.getElementById('treeArea').style.display = 'none';
+  document.getElementById('dashboardPanel').classList.add('visible');
+  renderDashboard();
+}
+
+function dashNavigate(view, filter) {
+  // Wissel naar de juiste view
+  currentView = view;
+  document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.view-tab').forEach(t => {
+    if ((view === 'groep' && t.textContent.trim() === 'Groepen') || (view === 'gebruiker' && t.textContent.trim() === 'Gebruikers') || (view === 'mappen' && t.textContent.trim() === 'Mappen')) t.classList.add('active');
+  });
+  currentSelection = null;
+  document.getElementById('folderDetail').classList.remove('visible');
+  document.getElementById('dashboardPanel').classList.remove('visible');
+  document.getElementById('treeArea').style.display = 'flex';
+  document.getElementById('sidebarSearch').style.display = '';
+  document.getElementById('selectList').style.display = '';
+  document.getElementById('sidebarSearch').placeholder = view === 'groep' ? 'Zoek groep...' : 'Zoek gebruiker...';
+  document.getElementById('exportBarMappen').style.display = 'none';
+  document.getElementById('infoBar').style.display = 'none';
+  document.getElementById('treeSearchBar').style.display = 'none';
+  document.getElementById('legendBar').style.display = 'none';
+  document.getElementById('treeContainer').innerHTML = '<div class="placeholder">Kies een ' + (view === 'groep' ? 'groep' : 'gebruiker') + '</div>';
+
+  // Filter de sidebar op basis van het filter
+  if (filter && view === 'gebruiker') {
+    window._dashFilter = filter;
+  } else {
+    window._dashFilter = null;
+  }
+  renderSidebar();
+
+  // Scroll naar de juiste sectie in de sidebar
+  const list = document.getElementById('selectList');
+  if (filter === 'admin') {
+    const header = list.querySelector('.section-header');
+    if (header) header.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } else if (filter === 'inactive') {
+    const headers = list.querySelectorAll('.section-header');
+    const inactiveHeader = [...headers].find(h => h.textContent.includes('Inactief'));
+    if (inactiveHeader) inactiveHeader.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+function renderDashboard() {
+  const panel = document.getElementById('dashboardPanel');
+  const projectNaam = csvData[0]?.pad.split('/')[0] || 'Onbekend project';
+  const totalFolders = csvData.length;
+  const totalGroups = allGroups.length;
+  const totalUsers = allUsers.length;
+  const admins = allUsers.filter(u => u.role === 'ADMIN' && u.status !== 'Removed');
+  const activeUsers = allUsers.filter(u => u.role !== 'ADMIN' && u.status === 'Active');
+  const inactiveUsers = allUsers.filter(u => u.status === 'Removed' || u.status === 'Pending Activation');
+
+  let html = '';
+
+  // Header
+  html += `<div class="dashboard-header">
+    <h2>${escapeHtml(projectNaam)}</h2>
+    <p>Overzicht van het project op basis van de ingelezen bestanden</p>
+  </div>`;
+
+  // Kaarten
+  html += '<div class="dash-cards">';
+  html += `<div class="dash-card" onclick="switchView('mappen');document.querySelector('.view-tab:nth-child(2)').click();" style="cursor:pointer;transition:box-shadow 0.15s;" onmouseover="this.style.boxShadow='0 2px 12px rgba(212,130,26,0.25)'" onmouseout="this.style.boxShadow=''"><div class="dash-label">Mappen</div><div class="dash-value" style="color:var(--af-oranje);">${totalFolders}</div></div>`;
+  html += `<div class="dash-card" onclick="dashNavigate('groep')" style="cursor:pointer;transition:box-shadow 0.15s;" onmouseover="this.style.boxShadow='0 2px 12px rgba(68,114,196,0.25)'" onmouseout="this.style.boxShadow=''"><div class="dash-label">Groepen</div><div class="dash-value" style="color:#4472C4;">${totalGroups}</div></div>`;
+  if (teamData) {
+    html += `<div class="dash-card" onclick="dashNavigate('gebruiker','admin')" style="cursor:pointer;transition:box-shadow 0.15s;" onmouseover="this.style.boxShadow='0 2px 12px rgba(108,91,0,0.25)'" onmouseout="this.style.boxShadow=''"><div class="dash-label">Beheerders</div><div class="dash-value" style="color:#6c5b00;">${admins.length}</div></div>`;
+    html += `<div class="dash-card" onclick="dashNavigate('gebruiker','active')" style="cursor:pointer;transition:box-shadow 0.15s;" onmouseover="this.style.boxShadow='0 2px 12px rgba(45,106,79,0.25)'" onmouseout="this.style.boxShadow=''"><div class="dash-label">Actieve gebruikers</div><div class="dash-value" style="color:#2d6a4f;">${activeUsers.length}</div></div>`;
+    if (inactiveUsers.length) {
+      html += `<div class="dash-card" onclick="dashNavigate('gebruiker','inactive')" style="cursor:pointer;transition:box-shadow 0.15s;" onmouseover="this.style.boxShadow='0 2px 12px rgba(192,57,43,0.25)'" onmouseout="this.style.boxShadow=''"><div class="dash-label">Inactief / verwijderd</div><div class="dash-value" style="color:#c0392b;">${inactiveUsers.length}</div></div>`;
+    }
+  }
+  html += '</div>';
+
+  // Beheerders lijst
+  if (teamData && admins.length) {
+    html += '<div class="dash-section"><h3>Beheerders</h3>';
+    html += admins.map(u => `<div class="dash-bar-row">
+      <span class="dash-bar-label" style="cursor:pointer;color:var(--af-oranje);" onclick="switchView('gebruiker');setTimeout(()=>selectUser('${escapeHtml(u.email)}'),50)">${escapeHtml(u.name)}</span>
+      <span style="font-size:11px;color:#888;">${escapeHtml(u.email)}</span>
+    </div>`).join('');
+    html += '</div>';
+  }
+
+  // Groepen met aantal gebruikers (bar chart)
+  if (teamData) {
+    const groepData = allGroups.map(g => {
+      const leden = allUsers.filter(u => u.groups.includes(g) && u.status !== 'Removed').length;
+      const mappen = Object.keys(getEffectiveAccessForGroup(g)).length;
+      return { naam: g, leden, mappen };
+    }).sort((a, b) => b.leden - a.leden);
+
+    const maxLeden = Math.max(...groepData.map(g => g.leden), 1);
+
+    html += '<div class="dash-section"><h3>Gebruikers per groep</h3>';
+    for (const g of groepData) {
+      const pct = Math.round(g.leden / maxLeden * 100);
+      html += `<div class="dash-bar-row">
+        <span class="dash-bar-label" style="cursor:pointer;" onclick="switchView('groep');setTimeout(()=>selectGroup('${escapeHtml(g.naam)}'),50)">${escapeHtml(g.naam)}</span>
+        <div class="dash-bar-track">
+          <div class="dash-bar-fill" style="width:${pct}%;background:var(--af-oranje);"></div>
+        </div>
+        <span class="dash-bar-count">${g.leden}</span>
+      </div>`;
+    }
+    html += '</div>';
+
+    // Groepen met aantal mappen
+    const groepMapData = [...groepData].sort((a, b) => b.mappen - a.mappen);
+    const maxMappen = Math.max(...groepMapData.map(g => g.mappen), 1);
+
+    html += '<div class="dash-section"><h3>Toegankelijke mappen per groep</h3>';
+    for (const g of groepMapData) {
+      const pct = Math.round(g.mappen / maxMappen * 100);
+      html += `<div class="dash-bar-row">
+        <span class="dash-bar-label" style="cursor:pointer;" onclick="switchView('groep');setTimeout(()=>selectGroup('${escapeHtml(g.naam)}'),50)">${escapeHtml(g.naam)}</span>
+        <div class="dash-bar-track">
+          <div class="dash-bar-fill" style="width:${pct}%;background:#4472C4;"></div>
+        </div>
+        <span class="dash-bar-count">${g.mappen}</span>
+      </div>`;
+    }
+    html += '</div>';
+  } else {
+    html += '<div class="dash-section"><p style="color:#888;font-size:13px;">Upload de Team Excel om gebruikers- en groepsstatistieken te zien. <a href="#" onclick="backToUpload();return false;" style="color:var(--af-oranje);font-weight:600;">← Ga terug om te uploaden</a></p></div>';
+  }
+
+  // Export knop
+  html += `<div style="text-align:center;margin-top:8px;">
+    <button class="export-btn" onclick="exportToExcel()" style="padding:10px 24px;font-size:13px;">&#128202; Rechtenmatrix exporteren naar Excel</button>
+  </div>`;
+
+  panel.innerHTML = html;
+}
+
+function backToUpload() {
+  if (isEmbedded) {
+    // In TC-modus: herlaad data vanuit TC
+    document.getElementById('app').classList.remove('visible');
+    document.getElementById('tcLoadingScreen').style.display = '';
+    document.getElementById('folderDetail').classList.remove('visible');
+    // Reset en herlaad
+    initTCExtension();
+  } else {
+    document.getElementById('app').classList.remove('visible');
+    document.getElementById('uploadScreen').style.display = '';
+    document.getElementById('folderDetail').classList.remove('visible');
+  }
+}
+</script>
+</body>
+</html>
