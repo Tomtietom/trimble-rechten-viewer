@@ -1154,11 +1154,37 @@ async function initTCExtension() {
     detectRegion();
     console.log('[TC] Regio:', TC_API_BASE);
 
-    // Stap 3: Mappenstructuur ophalen
+    // Stap 3: Mappenstructuur ophalen — eerst rootId ophalen via REST API
     tcUpdateStep(3, 'loading', 'Mappenstructuur laden...');
     console.log('[TC] Mappen en bestanden ophalen...');
-    const rootFolderId = tcProject.rootFolderId || tcProject.rootId;
-    if (!rootFolderId) throw new Error('Root folder ID niet gevonden in project data. Keys: ' + Object.keys(tcProject).join(', '));
+
+    // rootFolderId zit niet in de Workspace API response, haal het op via REST
+    let rootFolderId = tcProject.rootFolderId || tcProject.rootId;
+    if (!rootFolderId) {
+      console.log('[TC] Root folder ID niet in project data, ophalen via REST API...');
+      try {
+        const projResp = await tcFetch(`/projects/${tcProject.id}`);
+        const projData = await projResp.json();
+        console.log('[TC] Project REST data:', JSON.stringify(projData));
+        rootFolderId = projData.rootId || projData.rootFolderId;
+      } catch (e) {
+        console.warn('[TC] Project REST call mislukt:', e.message);
+      }
+    }
+    if (!rootFolderId) {
+      // Fallback: probeer direct de folders endpoint met projectId
+      console.log('[TC] Fallback: folders ophalen via project ID...');
+      try {
+        const foldersResp = await tcFetch(`/folders?projectId=${tcProject.id}`);
+        const foldersData = await foldersResp.json();
+        console.log('[TC] Folders response:', JSON.stringify(foldersData).substring(0, 500));
+        if (foldersData && foldersData.length) rootFolderId = foldersData[0].id;
+      } catch (e) {
+        console.warn('[TC] Folders fallback mislukt:', e.message);
+      }
+    }
+    if (!rootFolderId) throw new Error('Root folder ID niet gevonden. Project ID: ' + tcProject.id);
+    console.log('[TC] Root folder ID:', rootFolderId);
     const allFolders = await tcFetchAllFolders(rootFolderId, tcProject.name || 'Project');
     tcUpdateStep(3, 'done', `${allFolders.length} mappen geladen`);
 
