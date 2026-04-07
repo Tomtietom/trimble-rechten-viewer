@@ -1129,10 +1129,10 @@ async function initTCExtension() {
       tcAPI.extension.setMenu(menuDef);
     }
 
-    // Toon keuzescherm
-    document.getElementById('tcChoiceProject').textContent = tcProject?.name || '';
-    document.getElementById('tcChoiceScreen').style.display = '';
-    return false; // niet direct starten, gebruiker kiest
+    // Start direct automatisch ophalen
+    document.getElementById('tcLoadingScreen').style.display = '';
+    tcAutoFetchData();
+    return true;
 
   } catch (e) {
     console.warn('[TC] Extensie init fout:', e.message);
@@ -1338,7 +1338,6 @@ async function tcAutoFetchData() {
 // ============================================================
 async function tcFetch(endpoint) {
   const url = TC_API_BASE + endpoint;
-  console.log('[TC API]', url);
   const resp = await fetch(url, {
     headers: {
       'Authorization': `Bearer ${tcToken}`,
@@ -1352,7 +1351,7 @@ async function tcFetch(endpoint) {
   return resp.json();
 }
 
-async function tcFetchPaginated(endpoint, pageSize = 50) {
+async function tcFetchPaginated(endpoint, pageSize = 100) {
   const allItems = [];
   let start = 0;
   let hasMore = true;
@@ -1384,32 +1383,41 @@ async function tcFetchPaginated(endpoint, pageSize = 50) {
   return allItems;
 }
 
-async function tcFetchFoldersRecursive(folderId, parentPath, projectName, result) {
-  let items;
-  try {
-    items = await tcFetchPaginated(`/folders/${folderId}/items`);
-  } catch (e) {
-    console.warn('[TC] Fout bij map ophalen:', folderId, e.message);
-    return;
-  }
+async function tcFetchFoldersRecursive(rootFolderId, unused, projectName, result) {
+  // Breadth-first parallel ophalen: per niveau alle mappen tegelijk ophalen
+  const PARALLEL = 10; // max gelijktijdige requests
+  let queue = [{ id: rootFolderId, path: '' }]; // mappen waarvan we kinderen moeten ophalen
 
-  const folders = items.filter(item => item.type === 'FOLDER');
-  for (const folder of folders) {
-    const folderPath = parentPath ? `${parentPath}/${folder.name}` : folder.name;
-    const fullPath = `${projectName}/${folderPath}`;
-    result.push({ id: folder.id, name: folder.name, path: fullPath });
+  while (queue.length > 0) {
+    // Verwerk queue in batches van PARALLEL
+    const batch = queue.splice(0, PARALLEL);
+    const batchResults = await Promise.all(batch.map(async ({ id, path }) => {
+      try {
+        return { path, items: await tcFetchPaginated(`/folders/${id}/items`) };
+      } catch (e) {
+        console.warn('[TC] Map ophalen mislukt:', id, e.message);
+        return { path, items: [] };
+      }
+    }));
 
-    // Update status
+    // Verwerk resultaten: voeg mappen toe en queue hun kinderen
+    for (const { path, items } of batchResults) {
+      const folders = items.filter(item => item.type === 'FOLDER');
+      for (const folder of folders) {
+        const folderPath = path ? `${path}/${folder.name}` : folder.name;
+        const fullPath = `${projectName}/${folderPath}`;
+        result.push({ id: folder.id, name: folder.name, path: fullPath });
+        queue.push({ id: folder.id, path: folderPath });
+      }
+    }
+
     document.getElementById('tcStatusText').textContent = `Mappen ophalen... (${result.length})`;
-
-    // Recursief submappen ophalen
-    await tcFetchFoldersRecursive(folder.id, folderPath, projectName, result);
   }
 }
 
 async function tcFetchPermissions(folders) {
   const permissions = [];
-  const batchSize = 5;
+  const batchSize = 10;
 
   for (let i = 0; i < folders.length; i += batchSize) {
     const batch = folders.slice(i, i + batchSize);
@@ -2685,9 +2693,17 @@ function renderDashboard() {
 function backToUpload() {
   document.getElementById('app').classList.remove('visible');
   document.getElementById('folderDetail').classList.remove('visible');
-  if (isEmbedded) {
-    // In TC-modus: terug naar keuzescherm
-    document.getElementById('tcChoiceScreen').style.display = '';
+  if (isEmbedded && tcToken) {
+    // In TC-modus: opnieuw ophalen
+    document.getElementById('tcLoadingScreen').style.display = '';
+    // Reset stappen
+    for (let i = 1; i <= 4; i++) {
+      const el = document.getElementById('tcStep' + i);
+      if (el) { el.style.opacity = i === 1 ? '1' : '0.4'; }
+    }
+    document.getElementById('tcError').style.display = 'none';
+    document.getElementById('tcFallbackBtn').style.display = 'none';
+    tcAutoFetchData();
   } else {
     document.getElementById('uploadScreen').style.display = '';
   }
