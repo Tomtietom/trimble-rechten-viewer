@@ -855,6 +855,28 @@ input[type="file"] { display: none; }
   </div>
 </div>
 
+<!-- TC KEUZESCHERM -->
+<div id="tcChoiceScreen" style="display:none;">
+  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:40px;background:linear-gradient(180deg, white 0%, var(--af-grijs) 100%);">
+    <div class="upload-card" style="max-width:520px;">
+      <h2 style="font-family:'Montserrat',sans-serif;">Rechten Viewer</h2>
+      <div class="tagline">by At Fielt</div>
+      <div id="tcChoiceProject" style="background:var(--af-oranje-licht);color:var(--af-oranje);padding:6px 16px;border-radius:8px;font-size:13px;font-weight:600;margin:12px 0 20px;"></div>
+      <p style="color:#666;font-size:14px;margin-bottom:24px;">Hoe wil je de rechtendata laden?</p>
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <button onclick="tcStartAutoFetch()" style="display:flex;align-items:center;gap:12px;padding:16px 20px;background:var(--af-oranje);color:white;border:none;border-radius:10px;cursor:pointer;font-size:14px;font-family:'Poppins',sans-serif;font-weight:500;transition:background 0.15s;text-align:left;" onmouseover="this.style.background='var(--af-oranje-hover)'" onmouseout="this.style.background='var(--af-oranje)'">
+          <span style="font-size:24px;">&#9889;</span>
+          <span><strong>Automatisch ophalen</strong><br><span style="font-size:12px;opacity:0.9;">Direct uit dit Trimble Connect project</span></span>
+        </button>
+        <button onclick="tcStartManualUpload()" style="display:flex;align-items:center;gap:12px;padding:16px 20px;background:white;color:var(--af-donker);border:2px solid #ddd;border-radius:10px;cursor:pointer;font-size:14px;font-family:'Poppins',sans-serif;font-weight:500;transition:border-color 0.15s;text-align:left;" onmouseover="this.style.borderColor='var(--af-oranje)'" onmouseout="this.style.borderColor='#ddd'">
+          <span style="font-size:24px;">&#128194;</span>
+          <span><strong>Handmatig uploaden</strong><br><span style="font-size:12px;color:#888;">CSV en Excel bestanden uploaden</span></span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- TC AUTO-LOAD SCHERM -->
 <div id="tcLoadingScreen" style="display:none;">
   <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:40px;background:linear-gradient(180deg, white 0%, var(--af-grijs) 100%);">
@@ -1107,15 +1129,14 @@ async function initTCExtension() {
       tcAPI.extension.setMenu(menuDef);
     }
 
-    // Toon loading screen en start data ophalen
-    document.getElementById('tcLoadingScreen').style.display = '';
-    await tcAutoFetchData();
-    return true;
+    // Toon keuzescherm
+    document.getElementById('tcChoiceProject').textContent = tcProject?.name || '';
+    document.getElementById('tcChoiceScreen').style.display = '';
+    return false; // niet direct starten, gebruiker kiest
 
   } catch (e) {
     console.warn('[TC] Extensie init fout:', e.message);
     // Fallback: toon upload scherm
-    document.getElementById('tcLoadingScreen').style.display = 'none';
     document.getElementById('uploadScreen').style.display = '';
     const nameEl = document.getElementById('tcProjectLabel');
     if (nameEl && tcProject?.name) {
@@ -1145,6 +1166,22 @@ function tcUpdateStep(step, status, text) {
   } else if (status === 'error') {
     el.innerHTML = `&#10060; ${text}`;
     el.style.opacity = '1';
+  }
+}
+
+function tcStartAutoFetch() {
+  document.getElementById('tcChoiceScreen').style.display = 'none';
+  document.getElementById('tcLoadingScreen').style.display = '';
+  tcAutoFetchData();
+}
+
+function tcStartManualUpload() {
+  document.getElementById('tcChoiceScreen').style.display = 'none';
+  document.getElementById('uploadScreen').style.display = '';
+  const nameEl = document.getElementById('tcProjectLabel');
+  if (nameEl && tcProject?.name) {
+    nameEl.textContent = tcProject.name;
+    nameEl.style.display = '';
   }
 }
 
@@ -2648,17 +2685,9 @@ function renderDashboard() {
 function backToUpload() {
   document.getElementById('app').classList.remove('visible');
   document.getElementById('folderDetail').classList.remove('visible');
-  if (isEmbedded && tcToken) {
-    // In TC-modus: herlaad data uit project
-    document.getElementById('tcLoadingScreen').style.display = '';
-    // Reset steps
-    for (let i = 1; i <= 4; i++) {
-      const el = document.getElementById('tcStep' + i);
-      if (el) { el.innerHTML = '&#9744; ' + el.textContent.replace(/^[^\s]+\s/, ''); el.style.opacity = i === 1 ? '1' : '0.4'; }
-    }
-    document.getElementById('tcError').style.display = 'none';
-    document.getElementById('tcFallbackBtn').style.display = 'none';
-    tcAutoFetchData();
+  if (isEmbedded) {
+    // In TC-modus: terug naar keuzescherm
+    document.getElementById('tcChoiceScreen').style.display = '';
   } else {
     document.getElementById('uploadScreen').style.display = '';
   }
