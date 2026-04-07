@@ -895,6 +895,11 @@ input[type="file"] { display: none; }
       </div>
       <div id="tcError" style="display:none;margin-top:16px;background:#fde8e8;border:1px solid #f5c6c6;border-radius:8px;padding:12px;font-size:12px;color:#a94442;text-align:left;"></div>
       <button id="tcFallbackBtn" style="display:none;margin-top:12px;padding:8px 20px;background:var(--af-oranje);color:white;border:none;border-radius:8px;cursor:pointer;font-size:13px;" onclick="tcFallbackToUpload()">Handmatig uploaden</button>
+      <div class="disclaimer" style="margin-top:24px;">
+        <strong>Disclaimer:</strong> Deze tool is bedoeld als hulpmiddel voor inzicht in de mappenstructuur en rechteninrichting.
+        At Fielt is niet verantwoordelijk voor eventuele fouten in de weergave of voor verkeerd ingestelde rechten in Trimble Connect.
+        Controleer de rechteninstellingen altijd in Trimble Connect zelf.
+      </div>
     </div>
   </div>
 </div>
@@ -1299,21 +1304,36 @@ async function tcAutoFetchData() {
     if (!rootFolderId) throw new Error('Root folder niet gevonden. Gebruik handmatige upload.');
     console.log('[TC] Root folder ID:', rootFolderId);
 
-    // Recursief alle mappen ophalen
-    const allFolders = [];
-    await tcFetchFoldersRecursive(rootFolderId, '', projectName, allFolders);
+    // Start teamleden ophalen PARALLEL met mappen (onafhankelijke data)
+    tcUpdateStep(4, 'loading', 'Teamleden laden...');
+    const teamPromise = tcFetchTeam().then(result => {
+      tcUpdateStep(4, 'done', `${result.users.length} leden, ${result.groups.length} groepen`);
+      return result;
+    }).catch(e => {
+      console.warn('[TC] Team ophalen mislukt:', e.message);
+      tcUpdateStep(4, 'done', 'Team niet beschikbaar');
+      return { users: [], groups: [] };
+    });
+
+    // Alle mappen ophalen — probeer eerst bulk endpoint
+    let allFolders = [];
+    try {
+      allFolders = await tcFetchAllFoldersBulk(rootFolderId, projectName);
+      console.log('[TC] Bulk: alle mappen opgehaald:', allFolders.length);
+    } catch (e) {
+      console.warn('[TC] Bulk mappen mislukt, fallback naar recursief:', e.message);
+      await tcFetchFoldersRecursive(rootFolderId, '', projectName, allFolders);
+    }
     console.log('[TC] Totaal mappen gevonden:', allFolders.length);
     tcUpdateStep(2, 'done', `${allFolders.length} mappen gevonden`);
 
-    // Stap 3: Rechten ophalen per map
+    // Rechten ophalen per map
     tcUpdateStep(3, 'loading', 'Rechten ophalen...');
     const permissionsData = await tcFetchPermissions(allFolders);
     tcUpdateStep(3, 'done', 'Rechten opgehaald');
 
-    // Stap 4: Teamleden ophalen
-    tcUpdateStep(4, 'loading', 'Teamleden laden...');
-    const { users, groups } = await tcFetchTeam();
-    tcUpdateStep(4, 'done', `${users.length} leden, ${groups.length} groepen`);
+    // Wacht op team data (is waarschijnlijk al klaar)
+    const { users, groups } = await teamPromise;
 
     // Data omzetten naar viewer formaat
     tcConvertData(allFolders, permissionsData, users, groups, projectName);
@@ -1381,6 +1401,63 @@ async function tcFetchPaginated(endpoint, pageSize = 100) {
     } else { hasMore = false; }
   }
   return allItems;
+}
+
+async function tcFetchAllFoldersBulk(rootFolderId, projectName) {
+  // Haalt ALLE mappen op via /projects/{id}/folders (flat list, gepagineerd)
+  // en reconstrueert paden via parentId relaties.
+  // ~23 requests ipv ~2250 bij recursief.
+  tcUpdateStep(2, 'loading', 'Alle mappen ophalen (bulk)...');
+
+  const allApiFolders = await tcFetchPaginated('/projects/' + tcProject.id + '/folders');
+  console.log('[TC] Bulk endpoint: ', allApiFolders.length, 'mappen ontvangen');
+
+  if (!allApiFolders || allApiFolders.length === 0) {
+    throw new Error('Bulk endpoint gaf geen mappen terug');
+  }
+
+  // Bouw lookup: id → folder object
+  const byId = {};
+  for (const f of allApiFolders) {
+    byId[f.id] = f;
+  }
+
+  // Bouw pad via parentId chain (cache resultaat per folder)
+  const pathCache = {};
+
+  function buildPath(folderId) {
+    if (pathCache[folderId]) return pathCache[folderId];
+    const folder = byId[folderId];
+    if (!folder) return '';
+
+    if (!folder.parentId || folder.parentId === rootFolderId || !byId[folder.parentId]) {
+      // Direct child van root, of parent is root zelf
+      pathCache[folderId] = projectName + '/' + folder.name;
+    } else {
+      // Recursief pad opbouwen
+      const parentPath = buildPath(folder.parentId);
+      pathCache[folderId] = parentPath + '/' + folder.name;
+    }
+    return pathCache[folderId];
+  }
+
+  // Converteer naar het formaat dat de rest van de app verwacht
+  const result = [];
+  for (const f of allApiFolders) {
+    // Sla de rootfolder zelf over (die zit er soms in)
+    if (f.id === rootFolderId) continue;
+
+    const path = buildPath(f.id);
+    result.push({
+      id: f.id,
+      name: f.name,
+      path: path
+    });
+  }
+
+  tcUpdateStep(2, 'loading', `${result.length} mappen gevonden, rechten ophalen...`);
+  console.log('[TC] Bulk: paden opgebouwd voor', result.length, 'mappen');
+  return result;
 }
 
 async function tcFetchFoldersRecursive(rootFolderId, unused, projectName, result) {
