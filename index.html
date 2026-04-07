@@ -785,6 +785,7 @@ input[type="file"] { display: none; }
     <img src="https://irp.cdn-website.com/a75ebd43/dms3rep/multi/opt/1-1920w.png" alt="At Fielt" style="height:48px;margin-bottom:12px;" onerror="this.style.display='none'">
     <h2>Trimble Connect Rechten Viewer</h2>
     <div class="tagline">by At Fielt</div>
+    <div id="tcProjectLabel" style="display:none;background:var(--af-oranje-licht);color:var(--af-oranje);padding:6px 16px;border-radius:8px;font-size:13px;font-weight:600;margin-bottom:8px;"></div>
     <p>Upload de exports uit je Trimble Connect project om rechten per groep en gebruiker te bekijken.</p>
 
     <button class="guide-toggle" id="guideToggle" onclick="this.classList.toggle('open');document.getElementById('guidePanel').classList.toggle('visible');">
@@ -1075,10 +1076,31 @@ async function initTCExtension() {
     return false;
   }
 
-  // We zitten in een iframe — probeer TC extensie modus
+  // We zitten in een iframe — toon upload scherm met TC-context
   isEmbedded = true;
-  document.getElementById('uploadScreen').style.display = 'none';
-  document.getElementById('tcLoadingScreen').style.display = 'flex';
+  console.log('[Viewer] TC extensie modus — handmatige upload in TC');
+
+  // Probeer project info op te halen voor context
+  try {
+    const apiLib = window.WorkspaceAPI || window.Extensions || window.TrimbleConnectWorkspace;
+    if (apiLib && typeof apiLib.connect === 'function') {
+      tcAPI = await apiLib.connect(window.parent, () => {}, 10000);
+      tcProject = await tcAPI.project.getCurrentProject();
+      console.log('[TC] Project:', tcProject?.name);
+      // Toon projectnaam in upload scherm
+      const nameEl = document.getElementById('tcProjectLabel');
+      if (nameEl && tcProject?.name) {
+        nameEl.textContent = tcProject.name;
+        nameEl.style.display = '';
+      }
+    }
+  } catch (e) {
+    console.warn('[TC] Kon projectinfo niet ophalen:', e.message);
+  }
+
+  // Toon gewoon het upload scherm (werkt altijd)
+  document.getElementById('uploadScreen').style.display = '';
+  return false; // false = upload scherm wordt getoond
 
   try {
     tcUpdateStep(1, 'loading', 'Wachten op Trimble Connect API...');
