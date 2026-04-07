@@ -52,9 +52,8 @@ body {
   font-weight: 400;
 }
 .header .subtitle {
-  font-size: 13px;
+  font-size: 12px;
   opacity: 0.7;
-  margin-left: auto;
   font-family: 'Poppins', sans-serif;
 }
 
@@ -163,25 +162,23 @@ input[type="file"] { display: none; }
 
 .view-tabs {
   display: flex;
-  gap: 4px;
+  gap: 3px;
   margin-bottom: 10px;
-  flex-wrap: wrap;
 }
 .view-tab {
   flex: 1;
   min-width: 0;
-  padding: 7px 4px;
+  padding: 7px 2px;
   border: none;
   background: var(--af-grijs);
   border-radius: 6px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   font-family: 'Poppins', sans-serif;
   transition: all 0.15s;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  text-align: center;
 }
 .view-tab.active {
   background: var(--af-oranje);
@@ -193,10 +190,9 @@ input[type="file"] { display: none; }
   .app-body { flex-direction: column; }
   .sidebar { width: 100% !important; border-right: none !important; border-bottom: 1px solid #e8e0d8; flex-shrink: 0; }
   .header h1 { font-size: 13px !important; }
-  .header .brand { display: none; }
   .header { padding: 8px 12px !important; gap: 4px; flex-wrap: wrap; }
   .header .subtitle { margin-left: 0; font-size: 11px; }
-  .view-tab { font-size: 11px; padding: 6px 2px; }
+  .header-logo { display: none; }
   .sidebar-section { padding: 10px 12px; }
 }
 
@@ -1610,6 +1606,9 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
 
   // Helper: resolve "tc-groups:abc123" of "tc-users:abc123" naar naam
   function resolveSubject(subjectStr) {
+    // Speciale waarden
+    if (subjectStr === '*') return { name: 'Alle projectleden', type: 'group' };
+
     if (subjectStr.startsWith('tc-groups:')) {
       const gid = subjectStr.replace('tc-groups:', '');
       return { name: groupById[gid] || gid, type: 'group' };
@@ -1617,8 +1616,8 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
       const uid = subjectStr.replace('tc-users:', '');
       return { name: userById[uid] || uid, type: 'user' };
     }
-    // Onbekend prefix — probeer als groep-ID
-    return { name: groupById[subjectStr] || userById[subjectStr] || subjectStr, type: 'unknown' };
+    // Geen prefix — is waarschijnlijk al een groepsnaam (bijv. "Ver_Adviseurs")
+    return { name: groupById[subjectStr] || userById[subjectStr] || subjectStr, type: 'group' };
   }
 
   // Root project entry toevoegen
@@ -1689,11 +1688,6 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
   allGroups = [...groupSet].sort((a, b) => a.localeCompare(b, 'nl'));
   csvData = data;
 
-  // Check of er onopgeloste groep-IDs zijn (ID in plaats van naam)
-  const unresolvedGroups = allGroups.filter(name => /^[a-zA-Z0-9_-]{8,}$/.test(name) && !name.includes(' '));
-  if (unresolvedGroups.length > 0) {
-    console.warn('[TC] Onopgeloste groep-IDs (niet in lookup):', unresolvedGroups);
-  }
   console.log('[TC] Groepsnamen in rechtendata:', allGroups);
 
   // Team data converteren
