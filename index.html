@@ -1043,31 +1043,72 @@ async function initTCExtension() {
     return false;
   }
 
-  // We zitten in een iframe — toon upload scherm met TC-context
+  // We zitten in een iframe — TC extensie modus
   isEmbedded = true;
-  console.log('[Viewer] TC extensie modus — handmatige upload in TC');
+  console.log('[Viewer] TC extensie modus');
 
-  // Probeer project info op te halen voor context
   try {
-    const apiLib = window.WorkspaceAPI || window.Extensions || window.TrimbleConnectWorkspace;
-    if (apiLib && typeof apiLib.connect === 'function') {
-      tcAPI = await apiLib.connect(window.parent, () => {}, 10000);
-      tcProject = await tcAPI.project.getCurrentProject();
-      console.log('[TC] Project:', tcProject?.name);
-      // Toon projectnaam in upload scherm
-      const nameEl = document.getElementById('tcProjectLabel');
-      if (nameEl && tcProject?.name) {
-        nameEl.textContent = tcProject.name;
-        nameEl.style.display = '';
+    // Wacht op Workspace API library
+    const apiLib = await waitForWorkspaceAPI(10000);
+    console.log('[TC] API library gevonden:', apiLib);
+
+    // Verbind met TC host — luister naar events
+    tcAPI = await apiLib.connect(window.parent, (event, data) => {
+      console.log('[TC Event]', event, data);
+      if (event === 'extension.command' || event === 'command') {
+        // Sidebar-item is aangeklikt — toon de viewer
+        console.log('[TC] Command ontvangen:', data);
+        document.getElementById('uploadScreen').style.display = '';
+      }
+    }, 15000);
+    console.log('[TC] Verbonden met Workspace API');
+
+    // Project info ophalen
+    tcProject = await tcAPI.project.getCurrentProject();
+    console.log('[TC] Project:', tcProject?.name);
+
+    // Registreer sidebar menu-item
+    if (tcAPI.ui && typeof tcAPI.ui.setMenu === 'function') {
+      tcAPI.ui.setMenu({
+        title: 'Rechten Viewer',
+        icon: 'https://Tomtietom.github.io/trimble-rechten-viewer/icon.png',
+        command: 'open_rechten_viewer'
+      });
+      console.log('[TC] Sidebar menu geregistreerd via ui.setMenu');
+    } else if (tcAPI.extension && typeof tcAPI.extension.setMenu === 'function') {
+      tcAPI.extension.setMenu({
+        title: 'Rechten Viewer',
+        icon: 'https://Tomtietom.github.io/trimble-rechten-viewer/icon.png',
+        command: 'open_rechten_viewer'
+      });
+      console.log('[TC] Sidebar menu geregistreerd via extension.setMenu');
+    } else {
+      // Log alle beschikbare API methodes voor debugging
+      console.log('[TC] Beschikbare API namespaces:', Object.keys(tcAPI));
+      for (const key of Object.keys(tcAPI)) {
+        if (typeof tcAPI[key] === 'object' && tcAPI[key] !== null) {
+          console.log(`[TC] tcAPI.${key} methodes:`, Object.keys(tcAPI[key]));
+        }
       }
     }
+
+    // Toon projectnaam in upload scherm
+    const nameEl = document.getElementById('tcProjectLabel');
+    if (nameEl && tcProject?.name) {
+      nameEl.textContent = tcProject.name;
+      nameEl.style.display = '';
+    }
+
+    // Toon direct het upload scherm (extensie is zichtbaar zodra TC het paneel opent)
+    document.getElementById('uploadScreen').style.display = '';
+
   } catch (e) {
-    console.warn('[TC] Kon projectinfo niet ophalen:', e.message);
+    console.warn('[TC] Extensie init fout:', e.message);
+    // Fallback: toon upload scherm zonder TC-integratie
+    document.getElementById('uploadScreen').style.display = '';
   }
 
-  // Toon gewoon het upload scherm (werkt altijd)
-  document.getElementById('uploadScreen').style.display = '';
-  return false; // false = upload scherm wordt getoond
+  return false;
 }
 
 // ============================================================
