@@ -1577,7 +1577,11 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
 
   // Bouw lookup: groep-ID → groepnaam
   const groupById = {};
+  let noIdCount = 0;
+  let dupCount = 0;
   for (const g of groups) {
+    if (!g.id) { noIdCount++; continue; }
+    if (groupById[g.id]) dupCount++;
     groupById[g.id] = g.name || g.displayName || g.id;
   }
   // Bouw lookup: user-ID → username
@@ -1585,7 +1589,10 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
   for (const u of users) {
     userById[u.id] = u.displayName || [u.firstName, u.lastName].filter(Boolean).join(' ') || u.email || u.id;
   }
-  console.log('[TC] Lookups: ', Object.keys(groupById).length, 'groepen,', Object.keys(userById).length, 'users');
+  console.log('[TC] Lookups:', Object.keys(groupById).length, 'groepen (van', groups.length, '),', Object.keys(userById).length, 'users');
+  console.log('[TC] Groepen zonder id:', noIdCount, '| duplicaten:', dupCount);
+  // Log eerste 5 groepen om structuur te zien
+  console.log('[TC DEBUG] Eerste 5 groepen:', groups.slice(0, 5).map(g => ({ id: g.id, name: g.name, keys: Object.keys(g) })));
 
   // Helper: resolve "tc-groups:abc123" of "tc-users:abc123" naar naam
   function resolveSubject(subjectStr) {
@@ -1667,6 +1674,13 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
 
   allGroups = [...groupSet].sort((a, b) => a.localeCompare(b, 'nl'));
   csvData = data;
+
+  // Debug: check of er onopgeloste groep-IDs zijn (namen die op een ID lijken)
+  const unresolvedGroups = allGroups.filter(name => name.length < 20 && !name.includes(' ') && /^[a-zA-Z0-9_-]+$/.test(name));
+  if (unresolvedGroups.length > 0) {
+    console.log('[TC DEBUG] Mogelijk onopgeloste groep-IDs:', unresolvedGroups);
+  }
+  console.log('[TC DEBUG] Alle groepsnamen in rechten:', allGroups);
 
   // Team data converteren
   if (users.length > 0) {
