@@ -1520,6 +1520,10 @@ async function tcFetchPermissions(folders) {
     const results = await Promise.all(batch.map(async (folder) => {
       try {
         const perms = await tcFetch(`/folders/fs/${folder.id}/permissions`);
+        // DEBUG: Log ruwe response voor mappen met "Inkomend" in het pad
+        if (folder.path && folder.path.toLowerCase().includes('inkomend')) {
+          console.log(`[TC-RAW] ${folder.path}:`, JSON.stringify(perms, null, 2));
+        }
         return { folder, permissions: perms };
       } catch (e) {
         console.warn('[TC] Rechten fout voor', folder.path, e.message);
@@ -1620,6 +1624,9 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
     return { name: groupById[subjectStr] || userById[subjectStr] || subjectStr, type: 'group' };
   }
 
+  // DEBUG: Verzamel alle unieke ACL keys over alle mappen
+  const allAclKeys = new Set();
+
   // Root project entry toevoegen
   data.push({ pad: projectName, default: '', inherited: false, read: [], full: [] });
 
@@ -1643,6 +1650,7 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
 
       function processAcl(acl) {
         for (const [level, subjects] of Object.entries(acl)) {
+          allAclKeys.add(level);  // DEBUG: verzamel alle keys
           if (!Array.isArray(subjects)) continue;
           const upperLevel = level.toUpperCase();
           let accessLevel = null;
@@ -1710,6 +1718,11 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
       full: fullGroups
     });
   }
+
+  // DEBUG: Log alle gevonden ACL keys
+  console.log('[TC-DEBUG] Alle ACL keys gevonden in API responses:', [...allAclKeys]);
+  console.log('[TC-DEBUG] Mappen met full rechten:', data.filter(d => d.full.length > 0).length, 'van', data.length);
+  console.log('[TC-DEBUG] Mappen met read rechten:', data.filter(d => d.read.length > 0).length, 'van', data.length);
 
   allGroups = [...groupSet].sort((a, b) => a.localeCompare(b, 'nl'));
   csvData = data;
