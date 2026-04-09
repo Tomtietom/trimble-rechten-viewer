@@ -1655,10 +1655,12 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
           const upperLevel = level.toUpperCase();
           let accessLevel = null;
 
-          if (upperLevel === 'FULL' || upperLevel === 'WRITE' || upperLevel === 'ADMIN') {
+          if (upperLevel === 'FULL' || upperLevel === 'FULL_ACCESS' || upperLevel === 'WRITE' || upperLevel === 'ADMIN') {
             accessLevel = 'full';
-          } else if (upperLevel === 'READ' || upperLevel === 'VIEWER') {
+          } else if (upperLevel === 'READ' || upperLevel === 'READ_ACCESS' || upperLevel === 'VIEWER') {
             accessLevel = 'read';
+          } else if (upperLevel === 'NO_ACCESS') {
+            continue; // Negeer NO_ACCESS entries
           }
           if (!accessLevel) continue;
 
