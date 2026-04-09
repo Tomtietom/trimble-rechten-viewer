@@ -1627,52 +1627,78 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
     const readGroups = [];
     const fullGroups = [];
     let inherited = false;
+    let hasDirect = false;
+    let hasInherited = false;
 
     if (permissions) {
       // Trimble API structuur:
-      // { directPermissions: { defaultAccess: "NO_ACCESS", acl: { READ: [...], FULL: [...] }, inheritance: false } }
-      // OF: { inheritedPermissions: { ... }, directPermissions: { ... } }
-      const direct = permissions.directPermissions || permissions;
-      const acl = direct.acl || {};
-      inherited = direct.inheritance === true;
+      // { directPermissions: { defaultAccess, acl: { READ: [...], FULL: [...] }, inheritance: bool },
+      //   inheritedPermissions: { acl: { ... }, inheritance: true } }
+      //
+      // BELANGRIJK: Altijd BEIDE mergen! Een map kan direct READ hebben voor groep A
+      // en inherited FULL voor groep B. Beide moeten getoond worden.
 
-      // Verwerk elke access-level
-      for (const [level, subjects] of Object.entries(acl)) {
-        if (!Array.isArray(subjects)) continue;
-        const upperLevel = level.toUpperCase();
+      // Merge-map: subject → hoogste level ('full' wint van 'read')
+      const subjectAccess = {};
 
-        for (const subject of subjects) {
-          const resolved = resolveSubject(subject);
+      function processAcl(acl) {
+        for (const [level, subjects] of Object.entries(acl)) {
+          if (!Array.isArray(subjects)) continue;
+          const upperLevel = level.toUpperCase();
+          let accessLevel = null;
 
           if (upperLevel === 'FULL' || upperLevel === 'WRITE' || upperLevel === 'ADMIN') {
-            fullGroups.push(resolved.name);
-            groupSet.add(resolved.name);
+            accessLevel = 'full';
           } else if (upperLevel === 'READ' || upperLevel === 'VIEWER') {
-            readGroups.push(resolved.name);
+            accessLevel = 'read';
+          }
+          if (!accessLevel) continue;
+
+          for (const subject of subjects) {
+            const resolved = resolveSubject(subject);
+            const existing = subjectAccess[resolved.name];
+            // FULL wint altijd van READ
+            if (!existing || accessLevel === 'full') {
+              subjectAccess[resolved.name] = accessLevel;
+            }
             groupSet.add(resolved.name);
           }
         }
       }
 
-      // Als er inheritedPermissions zijn en geen directe, gebruik die
-      if (readGroups.length === 0 && fullGroups.length === 0 && permissions.inheritedPermissions) {
-        inherited = true;
-        const inhPerm = permissions.inheritedPermissions;
-        const inhAcl = inhPerm.acl || {};
-        for (const [level, subjects] of Object.entries(inhAcl)) {
-          if (!Array.isArray(subjects)) continue;
-          const upperLevel = level.toUpperCase();
-          for (const subject of subjects) {
-            const resolved = resolveSubject(subject);
-            if (upperLevel === 'FULL' || upperLevel === 'WRITE' || upperLevel === 'ADMIN') {
-              fullGroups.push(resolved.name);
-              groupSet.add(resolved.name);
-            } else if (upperLevel === 'READ' || upperLevel === 'VIEWER') {
-              readGroups.push(resolved.name);
-              groupSet.add(resolved.name);
-            }
-          }
+      // 1. Inherited permissions eerst (als basis)
+      const inhPerm = permissions.inheritedPermissions;
+      if (inhPerm && inhPerm.acl) {
+        hasInherited = true;
+        processAcl(inhPerm.acl);
+      }
+
+      // 2. Direct permissions er overheen (overschrijft/verhoogt)
+      const direct = permissions.directPermissions;
+      if (direct && direct.acl) {
+        hasDirect = true;
+        processAcl(direct.acl);
+      } else if (!direct && !inhPerm) {
+        // Fallback: permissions zelf is misschien het acl-object
+        const fallbackAcl = permissions.acl || {};
+        if (Object.keys(fallbackAcl).length > 0) {
+          hasDirect = true;
+          processAcl(fallbackAcl);
         }
+      }
+
+      // Bepaal inherited status
+      inherited = !hasDirect && hasInherited;
+
+      // Splits in readGroups en fullGroups
+      for (const [name, level] of Object.entries(subjectAccess)) {
+        if (level === 'full') fullGroups.push(name);
+        else readGroups.push(name);
+      }
+
+      // Debug logging (eerste 5 mappen met rechten)
+      if (data.length < 6 && (readGroups.length > 0 || fullGroups.length > 0)) {
+        console.log(`[TC-DEBUG] ${folder.path}: direct=${hasDirect}, inherited=${hasInherited}, read=[${readGroups.join(',')}], full=[${fullGroups.join(',')}]`);
       }
     }
 
@@ -1931,13 +1957,18 @@ function getEffectiveAccess(groupName) {
   const sortedData = [...csvData].sort((a, b) => a.pad.split('/').length - b.pad.split('/').length);
   for (const record of sortedData) {
     const pad = record.pad;
-    // Eerst checken of de groep expliciet in Full of Read staat (ongeacht inherited vlag)
-    if (record.full.includes(groupName)) { result[pad] = { level: 'full', inherited: false }; }
-    else if (record.read.includes(groupName)) { result[pad] = { level: 'read', inherited: false }; }
-    else if (record.inherited) {
-      // Inherited=Yes en groep niet expliciet vermeld: erven van parent
+    // Eerst checken of de groep expliciet in Full of Read staat
+    if (record.full.includes(groupName)) {
+      result[pad] = { level: 'full', inherited: false };
+    } else if (record.read.includes(groupName)) {
+      result[pad] = { level: 'read', inherited: false };
+    } else {
+      // Groep niet expliciet vermeld op deze map → erven van parent
+      // Dit is het Trimble-model: rechten stromen door tenzij expliciet overschreven
       const parentPath = pad.substring(0, pad.lastIndexOf('/'));
-      if (parentPath && result[parentPath]) result[pad] = { level: result[parentPath].level, inherited: true };
+      if (parentPath && result[parentPath]) {
+        result[pad] = { level: result[parentPath].level, inherited: true };
+      }
     }
   }
   return result;
