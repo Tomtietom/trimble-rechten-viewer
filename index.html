@@ -1608,6 +1608,8 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
     let inherited = false;
     let hasDirect = false;
     let hasInherited = false;
+    const denySet = new Set();         // Subjects met NO_ACCESS vanuit directPermissions
+    let inheritFromParent = true;      // Default: submap erft van bovenliggende map
 
     // DIAG: bepaal of we deze map loggen
     const diagShouldLog = DIAG_MODE && diagLogged < DIAG_MAX && (
@@ -1653,6 +1655,8 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
             if (isDirect) {
               // Direct overschrijft ALTIJD inherited (ook none → read, of full → none)
               subjectAccess[resolved.name] = accessLevel;
+              // Expliciete NO_ACCESS op deze map → blokkeert parent propagatie voor dit subject
+              if (accessLevel === 'none') denySet.add(resolved.name);
             } else {
               // Inherited: FULL wint van READ, maar schrijf niet over als er al iets staat van direct
               if (!existing || accessLevel === 'full') {
@@ -1673,6 +1677,10 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
 
       // 2. Direct permissions er overheen (overschrijft ALTIJD)
       const direct = permissions.directPermissions;
+      if (direct) {
+        // Respecteer expliciete inheritance-block op deze map
+        if (direct.inheritance === false) inheritFromParent = false;
+      }
       if (direct && direct.acl) {
         hasDirect = true;
         processAcl(direct.acl, true);
@@ -1711,9 +1719,15 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
       default: '',
       inherited: inherited,
       read: readGroups,
-      full: fullGroups
+      full: fullGroups,
+      _deny: denySet,
+      _hasDirect: hasDirect,
+      _inheritFromParent: inheritFromParent
     });
   }
+
+  // Eigen top-down propagatie: vul ontbrekende inheritance aan waar de API het niet doet
+  propagateInheritedPermissions(data, groupSet);
 
   allGroups = [...groupSet].sort((a, b) => a.localeCompare(b, 'nl'));
   csvData = data;
@@ -1765,6 +1779,85 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
   }
 
   console.log('[TC] Data geconverteerd:', csvData.length, 'mappen,', allGroups.length, 'groepen,', allUsers.length, 'gebruikers');
+}
+
+// ============================================================
+//  OVERERVING — top-down propagatie van parent-rechten naar kinderen
+//  Fix voor gevallen waarin Trimble API `inheritedPermissions` leeg/ontbrekend is.
+// ============================================================
+function propagateInheritedPermissions(records, groupSet) {
+  // Map voor snelle parent-lookup via pad
+  const padToRecord = {};
+  for (const r of records) padToRecord[r.pad] = r;
+
+  // Sorteer op diepte ascending → parents worden vóór kinderen verwerkt,
+  // zodat cascade automatisch meerdere niveaus diep propageert.
+  const sorted = [...records].sort((a, b) =>
+    a.pad.split('/').length - b.pad.split('/').length);
+
+  let foldersAffected = 0;
+  let subjectsAdded = 0;
+
+  for (const rec of sorted) {
+    // Map heeft expliciet inheritance geblokkeerd → parent-rechten niet overnemen
+    if (rec._inheritFromParent === false) continue;
+
+    const parts = rec.pad.split('/');
+    if (parts.length < 2) continue; // root / project entry heeft geen parent
+    const parentPad = parts.slice(0, -1).join('/');
+    const parent = padToRecord[parentPad];
+    if (!parent) continue;
+
+    const before = { r: rec.read.length, f: rec.full.length };
+    const added = [];
+
+    // Parent FULL → child FULL (tenzij expliciet denied of al aanwezig);
+    // promoot ook eventueel bestaand READ naar FULL.
+    for (const s of parent.full) {
+      if (rec._deny.has(s)) continue;
+      if (rec.full.includes(s)) continue;
+      const ri = rec.read.indexOf(s);
+      if (ri >= 0) rec.read.splice(ri, 1);
+      rec.full.push(s);
+      added.push(s + ' (full)');
+      subjectsAdded++;
+      if (groupSet) groupSet.add(s);
+    }
+
+    // Parent READ → child READ (tenzij denied, al read, of al full)
+    for (const s of parent.read) {
+      if (rec._deny.has(s)) continue;
+      if (rec.full.includes(s) || rec.read.includes(s)) continue;
+      rec.read.push(s);
+      added.push(s + ' (read)');
+      subjectsAdded++;
+      if (groupSet) groupSet.add(s);
+    }
+
+    if (added.length) {
+      foldersAffected++;
+      if (!rec._hasDirect) rec.inherited = true;
+      if (typeof DIAG_MODE !== 'undefined' && DIAG_MODE &&
+          (!DIAG_PATTERN || rec.pad.toLowerCase().includes(DIAG_PATTERN.toLowerCase()))) {
+        console.log(
+          `[DIAG-INH] ${rec.pad}`,
+          `before r=${before.r} f=${before.f} → after r=${rec.read.length} f=${rec.full.length}`,
+          'added:', added
+        );
+      }
+    }
+  }
+
+  console.log(
+    `[TC] Inheritance propagation: ${foldersAffected} mappen kregen ${subjectsAdded} subjects erbij van parent`
+  );
+
+  // Interne velden weer opruimen — ze zijn alleen voor deze pass nodig
+  for (const r of records) {
+    delete r._deny;
+    delete r._hasDirect;
+    delete r._inheritFromParent;
+  }
 }
 
 // ============================================================
