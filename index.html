@@ -7,6 +7,7 @@
 <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAJZJREFUWEft1DEKwCAQRdHx/peOhYVFCi1cwEIS0E5m+PPrVTq5e/9e3T3T+34fp/tnJoCZBECSJEmSJEmSJGlJANd9v3rv+xGA+wSQJEmSJEmS/ncAz8eSJEmSJEmStCSA53NJkiRJkiRJSwJ4PpckSZIkSZK0JIDnc0mSJEmSJElLAng+lyRJkiRJkrQkgOdzSZIkSZL+ewBfYCl0Id3cvQAAAABJRU5ErkJggg==">
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800&family=Poppins:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://components.connect.trimble.com/trimble-connect-workspace-api/index.js"></script>
+<!-- At Fielt Extension Hub — NIET VERWIJDEREN (zie atfielt-extension-hub/HUB-INTEGRATION.md) -->
 <script src="https://atfielt-extension-hub.tom-da0.workers.dev/client.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1270,89 +1271,26 @@ async function tcAutoFetchData() {
 
     console.log('[TC] Token beschikbaar, lengte:', tcToken.length);
 
-    // ============================================================
-    //  At Fielt Extension Hub — toegangscontrole
-    // ============================================================
-    // Strategie voor email-detectie, in volgorde:
-    //  1. Trimble REST API /users/me (betrouwbaarste bron)
-    //  2. JWT-payload velden (email, upn, preferred_username, unique_name, sub)
-    //  3. Bij falen: log alles wat we hebben voor diagnose
-    let hubEmail = null;
-
-    // Poging 1: /users/me via Trimble REST API
-    try {
-      const me = await tcFetch('/users/me');
-      console.log('[Hub] /users/me response keys:', Object.keys(me || {}));
-      hubEmail = me && (me.email || me.emailAddress || me.mail) || null;
-      if (hubEmail) console.log('[Hub] Email via /users/me:', hubEmail);
-    } catch (e) {
-      console.warn('[Hub] /users/me faalde:', e.message);
-    }
-
-    // Poging 2: JWT payload decoderen (als /users/me niks gaf)
-    if (!hubEmail) {
-      try {
-        const parts = tcToken.split('.');
-        if (parts.length === 3) {
-          const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-          const padded = base64 + '==='.slice((base64.length + 3) % 4);
-          const payload = JSON.parse(atob(padded));
-          console.log('[Hub] JWT payload keys:', Object.keys(payload));
-          console.log('[Hub] JWT payload:', payload);
-          hubEmail =
-            payload.email ||
-            payload.upn ||
-            payload.preferred_username ||
-            payload.unique_name ||
-            payload.user_name ||
-            payload.nameid ||
-            null;
-          // Sub is soms een email, soms een ID
-          if (!hubEmail && payload.sub && payload.sub.includes('@')) {
-            hubEmail = payload.sub;
-          }
-          if (hubEmail) console.log('[Hub] Email uit JWT:', hubEmail);
-        }
-      } catch (e) {
-        console.warn('[Hub] JWT decode mislukt:', e.message);
-      }
-    }
-
-    // Fail-closed: zonder hub client → blokkeer
+    // ╔══════════════════════════════════════════════════════════╗
+    // ║  AT FIELT EXTENSION HUB — NIET VERWIJDEREN               ║
+    // ║  Toegangscontrole + usage tracking via hub.              ║
+    // ║  Referentie: atfielt-extension-hub/HUB-INTEGRATION.md    ║
+    // ║  Als je dit blok weghaalt is de extensie niet beschermd  ║
+    // ║  en verschijnt er niks in het admin dashboard.           ║
+    // ╚══════════════════════════════════════════════════════════╝
     if (!window.atfieltHub) {
-      console.error('[Hub] client.js niet geladen — toegang geblokkeerd');
-      document.body.innerHTML =
-        '<div style="position:fixed;inset:0;background:#fff;display:flex;align-items:center;justify-content:center;font-family:Poppins,sans-serif;">' +
-        '<div style="max-width:480px;padding:40px;text-align:center;border:2px solid #d4821a;border-radius:12px;background:#fef5eb;">' +
-        '<h1 style="margin:0 0 16px;color:#222;">Laadfout</h1>' +
-        '<p style="margin:0 0 20px;color:#444;">At Fielt Hub kon niet geladen worden. Controleer je internetverbinding en herlaad de extensie.</p>' +
-        '<p style="margin:0;color:#666;font-size:14px;">Contact: <a href="mailto:info@atfielt.nl" style="color:#d4821a;">info@atfielt.nl</a></p>' +
-        '</div></div>';
+      document.body.innerHTML = '<div style="padding:40px;text-align:center;font-family:Poppins,sans-serif;">At Fielt Hub kon niet geladen worden. Controleer je internetverbinding en herlaad.<br><br><a href="mailto:info@atfielt.nl">info@atfielt.nl</a></div>';
       throw new Error('Hub client niet geladen');
     }
-
-    // Fail-closed: geen email uit JWT → blokkeer
-    if (!hubEmail) {
-      window.atfieltHub.showBlockScreen('Kon gebruikers-email niet uit Trimble-token lezen. Herlaad de extensie of neem contact op met At Fielt.');
-      throw new Error('Hub: geen email in JWT');
-    }
-
-    // Zet TC-context voor de hub client
-    window.atfieltTcContext = {
-      userEmail: hubEmail,
-      projectId: tcProject?.id || null,
-      projectName: tcProject?.name || null,
-      projectRegion: tcProject?.location || null,
-    };
-
-    // Toegang vragen bij de hub
-    const hubResult = await window.atfieltHub.auth('rechten-viewer');
-    if (!hubResult.allowed) {
-      window.atfieltHub.showBlockScreen(hubResult.reason || 'Geen toegang tot deze extensie.');
-      throw new Error('Hub: toegang geweigerd — ' + (hubResult.reason || 'onbekend'));
-    }
-    console.log('[Hub] Toegang verleend voor', hubEmail);
-    // ============================================================
+    await window.atfieltHub.check({
+      slug: 'rechten-viewer',
+      tcToken: tcToken,
+      tcProject: tcProject,
+      apiBase: TC_API_BASE,
+    });
+    // ╔══════════════════════════════════════════════════════════╗
+    // ║  EINDE AT FIELT HUB BLOK                                 ║
+    // ╚══════════════════════════════════════════════════════════╝
 
     tcUpdateStep(1, 'done', 'Verbonden met ' + (tcProject?.name || 'project'));
 
@@ -1421,7 +1359,7 @@ async function tcAutoFetchData() {
     buildTree();
     startApp();
 
-    // Hub: log successful load met stats
+    // [HUB] logEvent — niet verwijderen
     if (window.atfieltHub) {
       window.atfieltHub.logEvent('feature', {
         action: 'data-loaded',
@@ -1430,6 +1368,7 @@ async function tcAutoFetchData() {
         groups: groups.length,
       });
     }
+    // [HUB] einde
 
   } catch (err) {
     console.error('[TC] Auto-fetch mislukt:', err);
