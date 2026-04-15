@@ -1273,19 +1273,49 @@ async function tcAutoFetchData() {
     // ============================================================
     //  At Fielt Extension Hub — toegangscontrole
     // ============================================================
-    // Decodeer email uit JWT-token (TC geeft JWT bearer tokens)
+    // Strategie voor email-detectie, in volgorde:
+    //  1. Trimble REST API /users/me (betrouwbaarste bron)
+    //  2. JWT-payload velden (email, upn, preferred_username, unique_name, sub)
+    //  3. Bij falen: log alles wat we hebben voor diagnose
     let hubEmail = null;
+
+    // Poging 1: /users/me via Trimble REST API
     try {
-      const parts = tcToken.split('.');
-      if (parts.length === 3) {
-        const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-        const padded = base64 + '==='.slice((base64.length + 3) % 4);
-        const payload = JSON.parse(atob(padded));
-        hubEmail = payload.email || payload.upn || payload.preferred_username || null;
-        console.log('[Hub] Email uit JWT:', hubEmail);
-      }
+      const me = await tcFetch('/users/me');
+      console.log('[Hub] /users/me response keys:', Object.keys(me || {}));
+      hubEmail = me && (me.email || me.emailAddress || me.mail) || null;
+      if (hubEmail) console.log('[Hub] Email via /users/me:', hubEmail);
     } catch (e) {
-      console.warn('[Hub] JWT decode mislukt:', e.message);
+      console.warn('[Hub] /users/me faalde:', e.message);
+    }
+
+    // Poging 2: JWT payload decoderen (als /users/me niks gaf)
+    if (!hubEmail) {
+      try {
+        const parts = tcToken.split('.');
+        if (parts.length === 3) {
+          const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+          const padded = base64 + '==='.slice((base64.length + 3) % 4);
+          const payload = JSON.parse(atob(padded));
+          console.log('[Hub] JWT payload keys:', Object.keys(payload));
+          console.log('[Hub] JWT payload:', payload);
+          hubEmail =
+            payload.email ||
+            payload.upn ||
+            payload.preferred_username ||
+            payload.unique_name ||
+            payload.user_name ||
+            payload.nameid ||
+            null;
+          // Sub is soms een email, soms een ID
+          if (!hubEmail && payload.sub && payload.sub.includes('@')) {
+            hubEmail = payload.sub;
+          }
+          if (hubEmail) console.log('[Hub] Email uit JWT:', hubEmail);
+        }
+      } catch (e) {
+        console.warn('[Hub] JWT decode mislukt:', e.message);
+      }
     }
 
     // Fail-closed: zonder hub client → blokkeer
