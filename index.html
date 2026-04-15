@@ -367,30 +367,13 @@ input[type="file"] { display: none; }
 .access-read .folder-name { color: var(--af-read); }
 .access-read .access-badge { background: var(--af-read); color: white; }
 
-.access-inherited { opacity: 0.75; }
-.access-inherited .folder-name { font-style: italic; }
-
-/* Bovenliggende map zonder eigen toegang (pad-context) */
+/* Bovenliggende map zonder eigen toegang (structuurcontext) */
 .access-container {
-  background: #f8f6f4;
-  border-left: 3px solid #ccc;
-  margin-left: -2px;
+  background: transparent;
+  opacity: 0.5;
 }
 .access-container .folder-name { font-size: 12px; color: #999; }
 .access-container .folder-icon { opacity: 0.3; }
-.access-container .container-note {
-  font-size: 10px; color: #b0a090; margin-left: 8px; font-style: italic;
-}
-
-/* Onbereikbaar: map heeft rechten maar bovenliggende mappen niet */
-.access-unreachable { background: #fff8e1; border-left: 3px solid #f0ad4e; margin-left: -2px; }
-.access-unreachable:hover { background: #fff3cd !important; }
-.access-unreachable .folder-name { color: #856404; }
-.access-unreachable .access-badge { background: #856404; color: white; }
-.link-only-badge {
-  font-size: 9px; background: #f0ad4e; color: #fff; padding: 1px 7px; border-radius: 8px;
-  margin-left: 4px; font-weight: 500; white-space: nowrap;
-}
 
 /* Geen toegang: rood met verboden-pictogram (zichtbaar als toggle uit staat) */
 .access-none { background: #fde8e8; }
@@ -941,10 +924,7 @@ input[type="file"] { display: none; }
         <button class="info-help-btn" onclick="document.getElementById('infoModal').classList.add('visible')" title="Hoe werken rechten in Trimble Connect?">?</button>
         <span class="legend-item"><span class="legend-swatch" style="background:var(--af-full-bg);border:1px solid #c3e6cb;"></span> Full Access</span>
         <span class="legend-item"><span class="legend-swatch" style="background:var(--af-read-bg);border:1px solid #b8daff;"></span> Read Access</span>
-        <span class="legend-item"><span class="legend-swatch" style="background:#fff8e1;border:1px solid #f0ad4e;"></span> &#9888;&#65039; Alleen via directe link</span>
-        <span class="legend-item"><span class="legend-swatch" style="background:#fde8e8;border:1px solid #f5c6c6;"></span> &#128683; Geen toegang</span>
-        <span class="legend-item"><span class="legend-swatch" style="background:#f8f6f4;border:2px solid #ccc;"></span> Verborgen map (submappen wel toegang)</span>
-        <span class="legend-item" style="font-style:italic;">Cursief = geërfd recht</span>
+        <span class="legend-item"><span class="legend-swatch" style="background:#fde8e8;border:1px solid #f5c6c6;"></span> Geen toegang</span>
         <label class="toggle-switch">
           <input type="checkbox" id="hideNoAccess" checked onchange="renderTree()"> Alleen toegankelijke mappen
         </label>
@@ -981,8 +961,6 @@ input[type="file"] { display: none; }
             <li>Overerving kan per submap worden uitgeschakeld via <em>"Inherit from parent folder"</em> in Trimble Connect.</li>
             <li>Een submap kan dan eigen (strengere of ruimere) rechten krijgen.</li>
           </ul>
-          <p><em>In deze viewer worden geërfde rechten weergegeven in cursief.</em></p>
-
           <h3>Meerdere groepen</h3>
           <div class="tip-box">
             <strong>Hoogste recht wint:</strong> Als een gebruiker lid is van meerdere groepen, geldt altijd het hoogste toegangsniveau. Bijvoorbeeld: als groep A "Full Access" en groep B "Read Only" heeft op een map, dan heeft de gebruiker Full Access.
@@ -991,14 +969,8 @@ input[type="file"] { display: none; }
           <h3>Project Admins</h3>
           <p>Project Administrators hebben <strong>altijd volledige toegang</strong> tot alle mappen en bestanden, ongeacht de ingestelde rechten. Ze kunnen ook als enige rechten beheren.</p>
 
-          <h3>Verborgen mappen &amp; directe links</h3>
-          <div class="note-box">
-            <strong>Belangrijk:</strong> Als een gebruiker "No Access" heeft op een bovenliggende map, is die map <strong>volledig verborgen</strong> in Trimble Connect. De gebruiker kan er niet naartoe navigeren via de mappenstructuur.<br><br>
-            Als een submap wél eigen rechten heeft (bijv. Read Access), maar de bovenliggende map is verborgen, dan is die submap <strong>alleen bereikbaar via een directe link</strong>. In deze viewer worden zulke mappen gemarkeerd met <span class="info-badge badge-link">&#9888; Alleen via directe link</span>.
-          </div>
-
           <h3>Alle Project Leden</h3>
-          <p>"Alle project leden" is een impliciete groep in Trimble Connect. Rechten die aan deze groep worden toegekend, gelden voor <strong>iedereen</strong> in het project. Als deze groep Read Access heeft op een map, kan elk projectlid die map zien.</p>
+          <p>"Alle project leden" is een impliciete groep in Trimble Connect. Rechten die aan deze groep worden toegekend, gelden voor <strong>iedereen</strong> in het project.</p>
           <div class="tip-box">
             <strong>Let op:</strong> Rechten op specifieke groepen overschrijven de rechten van "Alle project leden". Een groep kan dus strengere of ruimere rechten hebben dan het projectbrede niveau.
           </div>
@@ -1008,9 +980,7 @@ input[type="file"] { display: none; }
             <tr><th>Kleur</th><th>Betekenis</th></tr>
             <tr><td><span class="info-badge badge-full">Full Access</span></td><td>Gebruiker kan alles doen in deze map</td></tr>
             <tr><td><span class="info-badge badge-read">Read Only</span></td><td>Gebruiker kan alleen lezen/downloaden</td></tr>
-            <tr><td><span class="info-badge badge-link">&#9888; Via directe link</span></td><td>Rechten zijn ingesteld, maar de bovenliggende map is verborgen — alleen bereikbaar via link</td></tr>
-            <tr><td><span class="info-badge badge-none">Geen toegang</span></td><td>Map is verborgen voor de gebruiker</td></tr>
-            <tr><td style="color:#aaa;font-style:italic;">Grijze map</td><td>Bovenliggende map zonder eigen rechten — in viewer getoond als context, maar verborgen in Trimble Connect</td></tr>
+            <tr><td><span class="info-badge badge-none">Geen toegang</span></td><td>Map is niet zichtbaar voor de gebruiker</td></tr>
           </table>
 
           <p style="margin-top:20px;font-size:11px;color:#999;">Bron: <a href="https://help.trimble.com/en/trimble-connect/trimble-connect/connect-for-browser/files-and-folders/folder-permissions" target="_blank" style="color:var(--af-oranje);">Trimble Connect Help — Folder Permissions</a></p>
@@ -1450,10 +1420,6 @@ async function tcFetchPermissions(folders) {
     const results = await Promise.all(batch.map(async (folder) => {
       try {
         const perms = await tcFetch(`/folders/fs/${folder.id}/permissions`);
-        // DEBUG: Log ruwe response voor mappen met "Inkomend" in het pad
-        if (folder.path && folder.path.toLowerCase().includes('inkomend')) {
-          console.log(`[TC-RAW] ${folder.path}:`, JSON.stringify(perms, null, 2));
-        }
         return { folder, permissions: perms };
       } catch (e) {
         console.warn('[TC] Rechten fout voor', folder.path, e.message);
@@ -1642,14 +1608,6 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
         // 'none' wordt bewust overgeslagen — geen toegang
       }
 
-      // Debug logging: eerste 5 mappen + mappen met NO_ACCESS entries
-      const noAccessGroups = Object.entries(subjectAccess).filter(([,v]) => v === 'none').map(([k]) => k);
-      if (data.length < 6 && (readGroups.length > 0 || fullGroups.length > 0)) {
-        console.log(`[TC-DEBUG] ${folder.path}: direct=${hasDirect}, inherited=${hasInherited}, read=[${readGroups.join(',')}], full=[${fullGroups.join(',')}]${noAccessGroups.length ? ', NO_ACCESS=[' + noAccessGroups.join(',') + ']' : ''}`);
-      }
-      if (noAccessGroups.length > 0) {
-        console.log(`[TC-NO_ACCESS] ${folder.path}: geblokkeerd voor [${noAccessGroups.join(', ')}]`);
-      }
     }
 
     data.push({
@@ -1659,20 +1617,6 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
       read: readGroups,
       full: fullGroups
     });
-  }
-
-  // DEBUG: Samenvatting
-  console.log('[TC-DEBUG] Alle ACL keys gevonden in API responses:', [...allAclKeys]);
-  console.log('[TC-DEBUG] Mappen met full rechten:', data.filter(d => d.full.length > 0).length, 'van', data.length);
-  console.log('[TC-DEBUG] Mappen met read rechten:', data.filter(d => d.read.length > 0).length, 'van', data.length);
-  console.log('[TC-DEBUG] GEEN PROPAGATIE — alleen API-data wordt getoond');
-
-  // DEBUG: Log probleemmappen (solibri, verslagen) voor verificatie
-  for (const d of data) {
-    const lpad = d.pad.toLowerCase();
-    if (lpad.includes('solibri') || lpad.includes('verslag')) {
-      console.log(`[TC-VERIFY] ${d.pad}: read=[${d.read.join(',')}], full=[${d.full.join(',')}]`);
-    }
   }
 
   allGroups = [...groupSet].sort((a, b) => a.localeCompare(b, 'nl'));
@@ -2030,51 +1974,51 @@ function renderTree() {
       const path = child.path;
       const access = accessMap[path];
       const level = access ? access.level : 'none';
-      const isInherited = access ? access.inherited : false;
       const hasChildren = Object.keys(child.children).length > 0;
       const childrenHtml = hasChildren ? renderNode(child, depth + 1) : '';
-      // Check of er daadwerkelijk zichtbare kinderen zijn (met access-full of access-read)
-      const hasAccessibleChildren = childrenHtml && (childrenHtml.includes('access-full') || childrenHtml.includes('access-read') || childrenHtml.includes('access-unreachable'));
+      const hasAccessibleChildren = childrenHtml && (childrenHtml.includes('access-full') || childrenHtml.includes('access-read'));
       if (searchTerm && !path.toLowerCase().includes(searchTerm) && !childrenHtml) continue;
-      // Bij verbergen: skip als geen toegang EN geen kinderen met toegang
       if (hideNoAccess && level === 'none' && !hasAccessibleChildren) continue;
       const isContainer = (level === 'none' && hasAccessibleChildren);
-      // Check bereikbaarheid: heeft deze map rechten maar ontbreken er rechten in de bovenliggende mappen?
-      const isReachable = (level !== 'none') ? hasFullParentChain(path, accessMap) : true;
-      const isUnreachable = (level !== 'none' && !isReachable);
+
+      // 3 statussen: full, read, none (+ container als structuurcontext)
       let accessClass;
-      if (isUnreachable) accessClass = 'access-unreachable';
-      else if (isContainer) accessClass = 'access-container';
-      else if (level !== 'none') accessClass = 'access-' + level + (isInherited ? ' access-inherited' : '');
+      if (isContainer) accessClass = 'access-container';
+      else if (level === 'full') accessClass = 'access-full';
+      else if (level === 'read') accessClass = 'access-read';
       else accessClass = 'access-none';
+
       const isOpen = depth < 1 || searchTerm;
       let badge = '';
-      let extraBadge = '';
       let folderIcon = hasChildren ? (isOpen ? '&#128194;' : '&#128193;') : '&#128193;';
       if (level === 'full') badge = 'Full Access';
       else if (level === 'read') badge = 'Read Access';
       else if (level === 'none' && !isContainer) { badge = 'Geen toegang'; folderIcon = '&#128683;'; }
-      // Onbereikbare map: waarschuwing toevoegen
-      if (isUnreachable) { extraBadge = '<span class="link-only-badge">&#9888; Alleen via directe link</span>'; folderIcon = '&#9888;&#65039;'; }
-      // Container map: notitie dat gebruiker deze map niet ziet
-      let containerNote = '';
-      if (isContainer) containerNote = '<span class="container-note">(verborgen voor gebruiker)</span>';
+
+      // Tooltip voor niet-bereikbare mappen (subtiel, geen extra badge)
+      let reachTitle = '';
+      if (level !== 'none' && !hasFullParentChain(path, accessMap)) {
+        reachTitle = ' title="Let op: bovenliggende map is niet toegankelijk — alleen bereikbaar via directe link"';
+      }
+
       // "Via Alle projectleden" label in groepsweergave
       let viaLabel = '';
       if (access && access.viaGroups && currentView === 'groep' && currentSelection) {
         const allMembersGroup = getAllMembersGroup();
         const isOnlyViaAllMembers = allMembersGroup && access.viaGroups.length === 1 && access.viaGroups[0] === allMembersGroup;
-        if (isOnlyViaAllMembers) viaLabel = `<span style="font-size:10px;color:#888;margin-left:6px;font-style:italic;">via ${escapeHtml(allMembersGroup)}</span>`;
+        if (isOnlyViaAllMembers) viaLabel = `<span style="font-size:10px;color:#888;margin-left:6px;">via ${escapeHtml(allMembersGroup)}</span>`;
       }
       let viaText = '';
       if (access && access.viaGroups) viaText = ` title="Via: ${access.viaGroups.join(', ')}"`;
+      // reachTitle overschrijft viaText als beide bestaan
+      const titleAttr = reachTitle || viaText;
 
       html += `<div class="tree-node">
-        <div class="tree-row ${accessClass}" onclick="toggleNode(this)"${viaText}>
+        <div class="tree-row ${accessClass}" onclick="toggleNode(this)"${titleAttr}>
           <span class="toggle">${hasChildren ? (isOpen ? '&#9660;' : '&#9654;') : ''}</span>
           <span class="folder-icon">${folderIcon}</span>
-          <span class="folder-name">${escapeHtml(child.name)}</span>${containerNote}
-          ${badge ? `<span class="access-badge">${badge}</span>` : ''}${viaLabel}${extraBadge}
+          <span class="folder-name">${escapeHtml(child.name)}</span>
+          ${badge ? `<span class="access-badge">${badge}</span>` : ''}${viaLabel}
         </div>
         ${hasChildren ? `<div class="children" style="display:${isOpen?'block':'none'}">${childrenHtml}</div>` : ''}
       </div>`;
