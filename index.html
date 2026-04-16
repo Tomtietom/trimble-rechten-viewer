@@ -1270,6 +1270,7 @@ async function tcAutoFetchData() {
     }
 
     console.log('[TC] Token beschikbaar, lengte:', tcToken.length);
+    _tcTokenExp = _parseTokenExp(tcToken);
 
     // ╔══════════════════════════════════════════════════════════╗
     // ║  AT FIELT EXTENSION HUB — NIET VERWIJDEREN               ║
@@ -1381,16 +1382,74 @@ async function tcAutoFetchData() {
 }
 
 // ============================================================
+//  TOKEN REFRESH HELPERS
+// ============================================================
+let _tcTokenExp = null;
+
+function _parseTokenExp(t) {
+  try { const p = JSON.parse(atob(t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/'))); return p.exp || null; } catch(e) { return null; }
+}
+
+function _isTokenExpired() {
+  if (!_tcTokenExp) return false;
+  return Date.now() >= (_tcTokenExp * 1000) - 60000;
+}
+
+async function _ensureValidToken() {
+  if (!_isTokenExpired()) return;
+  console.log('[TC] Token verlopen, vernieuwen...');
+  if (isEmbedded && tcAPI && tcAPI.extension) {
+    try {
+      var newToken = null;
+      if (tcAPI.extension.getAccessToken) {
+        newToken = await Promise.race([tcAPI.extension.getAccessToken(), new Promise(function(_,rej){setTimeout(function(){rej(new Error('timeout'));},5000);})]);
+      }
+      if (!newToken && tcAPI.extension.requestPermission) {
+        var result = await Promise.race([tcAPI.extension.requestPermission('accesstoken'), new Promise(function(_,rej){setTimeout(function(){rej(new Error('timeout'));},5000);})]);
+        if (typeof result === 'string') newToken = result;
+        else if (result && result.token) newToken = result.token;
+        else if (result && result.accessToken) newToken = result.accessToken;
+      }
+      if (newToken && newToken.length > 20) {
+        tcToken = newToken;
+        _tcTokenExp = _parseTokenExp(tcToken);
+        console.log('[TC] Token vernieuwd');
+        return;
+      }
+    } catch(e) { console.warn('[TC] Token refresh mislukt:', e.message); }
+    throw new Error('Token verlopen — sluit de extensie en open deze opnieuw.');
+  }
+  throw new Error('Token verlopen.');
+}
+
+function fetchWithTimeout(url, options, timeoutMs) {
+  timeoutMs = timeoutMs || 15000;
+  var controller = new AbortController();
+  var id = setTimeout(function() { controller.abort(); }, timeoutMs);
+  return fetch(url, Object.assign({}, options, { signal: controller.signal }))
+    .catch(function(err) {
+      if (err.name === 'AbortError') throw new Error('Verbinding time-out (' + Math.round(timeoutMs/1000) + 's). Controleer je internetverbinding.');
+      throw err;
+    })
+    .finally(function() { clearTimeout(id); });
+}
+
+// ============================================================
 //  TC REST API HELPERS
 // ============================================================
 async function tcFetch(endpoint) {
+  await _ensureValidToken();
   const url = TC_API_BASE + endpoint;
-  const resp = await fetch(url, {
+  var resp = await fetchWithTimeout(url, {
     headers: {
       'Authorization': `Bearer ${tcToken}`,
       'Accept': 'application/json'
     }
   });
+  if (resp.status === 401) {
+    await _ensureValidToken();
+    resp = await fetchWithTimeout(url, { headers: { 'Authorization': `Bearer ${tcToken}`, 'Accept': 'application/json' } });
+  }
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
     throw new Error(`API ${resp.status}: ${endpoint} — ${text.substring(0, 200)}`);
@@ -1399,6 +1458,7 @@ async function tcFetch(endpoint) {
 }
 
 async function tcFetchPaginated(endpoint, pageSize = 100) {
+  await _ensureValidToken();
   const allItems = [];
   const seenIds = new Set();
   let start = 0;
@@ -1406,13 +1466,17 @@ async function tcFetchPaginated(endpoint, pageSize = 100) {
 
   while (hasMore) {
     const url = TC_API_BASE + endpoint;
-    const resp = await fetch(url, {
+    var resp = await fetchWithTimeout(url, {
       headers: {
         'Authorization': `Bearer ${tcToken}`,
         'Accept': 'application/json',
         'Range': `items=${start}-${start + pageSize - 1}`
       }
     });
+    if (resp.status === 401) {
+      await _ensureValidToken();
+      resp = await fetchWithTimeout(url, { headers: { 'Authorization': `Bearer ${tcToken}`, 'Accept': 'application/json', 'Range': `items=${start}-${start + pageSize - 1}` } });
+    }
     if (!resp.ok) throw new Error(`API ${resp.status}: ${endpoint}`);
     const items = await resp.json();
     if (!Array.isArray(items) || items.length === 0) break;
