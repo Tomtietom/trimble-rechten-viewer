@@ -35,3 +35,12 @@ Wacht 1-3 min op GitHub Pages rebuild, dan verifieer:
 - **Manifest URL**: https://tomtietom.github.io/trimble-rechten-viewer/
 - **Hub URL**: https://atfielt-extension-hub.tom-da0.workers.dev
 - **Admin dashboard**: https://atfielt-extension-hub.tom-da0.workers.dev/admin
+
+## Token-refresh patroon (2026-04-17)
+
+`tcFetch()` en `tcFetchPaginated()` gebruiken:
+- **`fetchWithTimeout()`** — 15s timeout op alle API-calls via `AbortController`
+- **`_ensureValidToken()`** — checkt JWT `exp` (via `_parseTokenExp`) en refresht via `tcAPI.extension.getAccessToken()` bij expiry (60s marge)
+- **401-retry** — bij 401 vernieuwt token en herhaalt de call
+
+**Niet verwijderen of omzeilen.** JWT-tokens verlopen na ~1-2 uur; zonder deze helpers hangen calls als het paneel lang open staat.
