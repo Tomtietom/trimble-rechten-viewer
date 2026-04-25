@@ -1084,6 +1084,13 @@ async function initTCExtension() {
   try {
     // Stap 1: Verbinden met TC Workspace API
     const apiLib = await waitForWorkspaceAPI(10000);
+    // Detecteer of we vanuit At Fielt Cockpit zijn geopend (dan blijft cockpit-menu actief)
+    const _fromCockpit = (function(){
+      try { return new URLSearchParams(location.search).get('from') === 'cockpit'; }
+      catch(e) { return false; }
+    })();
+    const _COCKPIT_URL = 'https://tomtietom.github.io/trimble-dashboard-project-/';
+
     tcAPI = await apiLib.connect(window.parent, (event, data) => {
       console.log('[TC Event]', event, data);
       // Vang token op als die via event binnenkomt
@@ -1098,23 +1105,40 @@ async function initTCExtension() {
           console.log('[TC] Token via event ontvangen, lengte:', token.length);
         }
       }
+      // Cockpit-context: subMenu-klikken in zijbalk → navigeer naar de juiste extensie
+      if (_fromCockpit && event === 'extension.command' && data && typeof data.data === 'string') {
+        const cmd = data.data;
+        const TARGETS = {
+          'open_cockpit': _COCKPIT_URL,
+          'open_project_dashboard': 'https://tomtietom.github.io/trimble-project-dashboard/?from=cockpit',
+          'open_project_upload': 'https://tomtietom.github.io/trimble-project-upload/?from=cockpit',
+          'open_documentenlijst': 'https://tomtietom.github.io/tc-viewer/?from=cockpit'
+        };
+        if (TARGETS[cmd]) {
+          const sep = TARGETS[cmd].includes('?') ? '&' : '?';
+          window.location.href = TARGETS[cmd] + sep + 'v=' + Date.now();
+        }
+      }
     }, 15000);
-    console.log('[TC] Verbonden met Workspace API');
+    console.log('[TC] Verbonden met Workspace API', _fromCockpit ? '(uit cockpit)' : '');
 
     // Project info ophalen
     tcProject = await tcAPI.project.getCurrentProject();
     console.log('[TC] Project:', JSON.stringify(tcProject));
 
-    // Registreer sidebar menu-item
-    const menuDef = {
-      title: 'Rechten Viewer',
-      icon: 'https://Tomtietom.github.io/trimble-rechten-viewer/icon.png',
-      command: 'open_rechten_viewer'
-    };
-    if (tcAPI.ui && typeof tcAPI.ui.setMenu === 'function') {
-      tcAPI.ui.setMenu(menuDef);
-    } else if (tcAPI.extension && typeof tcAPI.extension.setMenu === 'function') {
-      tcAPI.extension.setMenu(menuDef);
+    // Registreer sidebar menu-item — als geopend vanuit cockpit, NIET overschrijven
+    // (dan blijft de cockpit's subMenu-structuur zichtbaar)
+    if (!_fromCockpit) {
+      const menuDef = {
+        title: 'Rechten Viewer',
+        icon: 'https://Tomtietom.github.io/trimble-rechten-viewer/icon.png',
+        command: 'open_rechten_viewer'
+      };
+      if (tcAPI.ui && typeof tcAPI.ui.setMenu === 'function') {
+        tcAPI.ui.setMenu(menuDef);
+      } else if (tcAPI.extension && typeof tcAPI.extension.setMenu === 'function') {
+        tcAPI.extension.setMenu(menuDef);
+      }
     }
 
     // Start direct automatisch ophalen
