@@ -1094,7 +1094,7 @@ async function initTCExtension() {
     // Toon zichtbare "← Cockpit"-knop in cockpit-context
     if (_fromCockpit) {
       const _backBtn = document.createElement('a');
-      _backBtn.href = _COCKPIT_URL + '?v=' + Date.now();
+      _backBtn.href = _COCKPIT_URL;
       _backBtn.textContent = '← At Fielt Cockpit';
       _backBtn.style.cssText = 'position:fixed;top:12px;left:12px;z-index:9999;background:#D4821A;color:#fff;padding:7px 14px;border-radius:999px;font-family:Poppins,sans-serif;font-size:13px;font-weight:600;text-decoration:none;box-shadow:0 4px 14px rgba(212,130,26,0.3);transition:background .15s;';
       _backBtn.addEventListener('mouseenter', function(){ _backBtn.style.background = '#8a5410'; });
@@ -1126,8 +1126,8 @@ async function initTCExtension() {
           'open_documentenlijst': 'https://tomtietom.github.io/tc-viewer/?from=cockpit'
         };
         if (TARGETS[cmd]) {
-          const sep = TARGETS[cmd].includes('?') ? '&' : '?';
-          window.location.href = TARGETS[cmd] + sep + 'v=' + Date.now();
+          // Geen Date.now() — voorkomt TC's "Rechten aanvragen"-popup door stabiele iframe-URLs
+          window.location.href = TARGETS[cmd];
         }
       }
     }, 15000);
