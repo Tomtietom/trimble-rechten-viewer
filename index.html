@@ -1737,46 +1737,64 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
       // Merge-map: subject → hoogste level ('full' wint van 'read')
       const subjectAccess = {};
 
+      // Helper: map een TC level-string naar 'full'/'read'/'none'
+      function levelToAccess(level) {
+        const upper = String(level || '').toUpperCase();
+        if (upper === 'FULL' || upper === 'FULL_ACCESS' || upper === 'WRITE' || upper === 'ADMIN') return 'full';
+        if (upper === 'READ' || upper === 'READ_ACCESS' || upper === 'VIEWER') return 'read';
+        if (upper === 'NO_ACCESS' || upper === 'NONE') return 'none';
+        return null;
+      }
+
+      // Helper: voeg een subject toe aan subjectAccess met de juiste merge-regels
+      function applySubject(name, accessLevel, isDirect) {
+        if (!accessLevel) return;
+        const existing = subjectAccess[name];
+        if (isDirect) {
+          subjectAccess[name] = accessLevel;
+          if (accessLevel === 'none') denySet.add(name);
+        } else {
+          if (!existing || accessLevel === 'full') {
+            subjectAccess[name] = accessLevel;
+          }
+        }
+        if (accessLevel !== 'none') groupSet.add(name);
+      }
+
       function processAcl(acl, isDirect) {
         for (const [level, subjects] of Object.entries(acl)) {
           allAclKeys.add(level);  // DEBUG: verzamel alle keys
           if (!Array.isArray(subjects)) continue;
-          const upperLevel = level.toUpperCase();
-          let accessLevel = null;
-
-          if (upperLevel === 'FULL' || upperLevel === 'FULL_ACCESS' || upperLevel === 'WRITE' || upperLevel === 'ADMIN') {
-            accessLevel = 'full';
-          } else if (upperLevel === 'READ' || upperLevel === 'READ_ACCESS' || upperLevel === 'VIEWER') {
-            accessLevel = 'read';
-          } else if (upperLevel === 'NO_ACCESS') {
-            accessLevel = 'none'; // Expliciet: geen toegang
-          }
+          const accessLevel = levelToAccess(level);
           if (!accessLevel) continue;
 
           for (const subject of subjects) {
             const resolved = resolveSubject(subject);
-            const existing = subjectAccess[resolved.name];
-            if (isDirect) {
-              // Direct overschrijft ALTIJD inherited (ook none → read, of full → none)
-              subjectAccess[resolved.name] = accessLevel;
-              // Expliciete NO_ACCESS op deze map → blokkeert parent propagatie voor dit subject
-              if (accessLevel === 'none') denySet.add(resolved.name);
-            } else {
-              // Inherited: FULL wint van READ, maar schrijf niet over als er al iets staat van direct
-              if (!existing || accessLevel === 'full') {
-                subjectAccess[resolved.name] = accessLevel;
-              }
-            }
-            if (accessLevel !== 'none') groupSet.add(resolved.name);
+            applySubject(resolved.name, accessLevel, isDirect);
           }
         }
       }
 
+      // Verwerk defaultAccess: dit is het toegangsniveau voor élk projectlid
+      // dat niet expliciet in de ACL staat. Mappen we op de impliciete groep
+      // "Alle projectleden" (zelfde als de ACL-key '*').
+      function processDefaultAccess(defaultAccessValue, isDirect) {
+        const accessLevel = levelToAccess(defaultAccessValue);
+        if (!accessLevel) return;
+        applySubject('Alle projectleden', accessLevel, isDirect);
+      }
+
       // 1. Inherited permissions eerst (als basis)
       const inhPerm = permissions.inheritedPermissions;
-      if (inhPerm && inhPerm.acl) {
-        hasInherited = true;
-        processAcl(inhPerm.acl, false);
+      if (inhPerm) {
+        if (inhPerm.acl) {
+          hasInherited = true;
+          processAcl(inhPerm.acl, false);
+        }
+        if (inhPerm.defaultAccess) {
+          hasInherited = true;
+          processDefaultAccess(inhPerm.defaultAccess, false);
+        }
       }
 
       // 2. Direct permissions er overheen (overschrijft ALTIJD)
@@ -1788,7 +1806,12 @@ function tcConvertData(folders, permissionsData, users, groups, projectName) {
       if (direct && direct.acl) {
         hasDirect = true;
         processAcl(direct.acl, true);
-      } else if (!direct && !inhPerm) {
+      }
+      if (direct && direct.defaultAccess) {
+        hasDirect = true;
+        processDefaultAccess(direct.defaultAccess, true);
+      }
+      if (!direct && !inhPerm) {
         // Fallback: permissions zelf is misschien het acl-object
         const fallbackAcl = permissions.acl || {};
         if (Object.keys(fallbackAcl).length > 0) {
