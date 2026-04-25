@@ -18,16 +18,17 @@ cd "$(dirname "$0")"
 MSG="${1:-update}"
 V=$(date +%Y%m%d%H%M)
 
-# Update URL in manifest.json: https://tomtietom.github.io/tc-viewer/?v=VERSIE
+# Update URL in manifest.json: <base>/?v=VERSIE
 # Werkt voor: geen query, bestaande ?v=..., bestaande andere query
-python3 -c "
+NEW_URL=$(python3 -c "
 import json
 with open('manifest.json','r') as f: m = json.load(f)
 base = m['url'].split('?')[0]
 m['url'] = base + '?v=$V'
 with open('manifest.json','w') as f: json.dump(m, f, indent=2, ensure_ascii=False); f.write('\n')
-print('manifest.json URL:', m['url'])
-"
+print(m['url'])
+")
+BASE_URL=$(echo "$NEW_URL" | sed 's|?.*||')
 
 git add -A
 git commit -m "$MSG
@@ -38,8 +39,8 @@ git push
 
 echo ""
 echo "✓ Gedeployed als versie $V"
-echo "  Manifest: https://tomtietom.github.io/tc-viewer/manifest.json"
-echo "  Viewer:   https://tomtietom.github.io/tc-viewer/?v=$V"
+echo "  Manifest: ${BASE_URL}manifest.json"
+echo "  Viewer:   $NEW_URL"
 echo ""
 echo "Wacht 1-3 min op GitHub Pages rebuild, dan herlaad Trimble Connect"
 echo "(complete tab sluiten & opnieuw openen, geen gewone refresh)."

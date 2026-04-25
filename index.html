@@ -1088,7 +1088,11 @@ async function initTCExtension() {
       console.log('[TC Event]', event, data);
       // Vang token op als die via event binnenkomt
       if (data && (data.type === 'token' || event === 'extension.accessToken')) {
-        const token = (typeof data === 'string') ? data : (data.token || data.accessToken || null);
+        // Token kan in verschillende velden zitten afhankelijk van TC-versie
+        let token = null;
+        if (typeof data === 'string') token = data;
+        else token = data.token || data.accessToken
+          || (event === 'extension.accessToken' && typeof data.data === 'string' ? data.data : null);
         if (token && token.length > 20) {
           tcToken = token;
           console.log('[TC] Token via event ontvangen, lengte:', token.length);
