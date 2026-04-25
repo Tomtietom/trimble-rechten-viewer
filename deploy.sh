@@ -24,7 +24,7 @@ NEW_URL=$(python3 -c "
 import json
 with open('manifest.json','r') as f: m = json.load(f)
 base = m['url'].split('?')[0]
-m['url'] = base + '?v=$V'
+m['url'] = base
 with open('manifest.json','w') as f: json.dump(m, f, indent=2, ensure_ascii=False); f.write('\n')
 print(m['url'])
 ")
