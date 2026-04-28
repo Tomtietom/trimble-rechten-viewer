@@ -1043,6 +1043,10 @@ if (DIAG_MODE) {
 }
 
 // TC API base URLs per regio
+// Hardcoded omdat de regio uit `tcProject.location` (Workspace API) komt; bij een
+// vierde regio of hostname-rename is de canonieke aanpak: GET /regions op de
+// master (https://app.connect.trimble.com/tc/api/2.0/regions) en `origin` per
+// regio uitlezen. Zie developer.trimble.com/docs/connect/concepts/ → Regions.
 const TC_API_REGIONS = {
   'europe':  'https://app21.connect.trimble.com/tc/api/2.0',
   'north america': 'https://app.connect.trimble.com/tc/api/2.0',
@@ -1057,12 +1061,12 @@ let TC_API_BASE = TC_API_REGIONS['europe'];
 function waitForWorkspaceAPI(maxWait = 10000) {
   return new Promise((resolve, reject) => {
     // Check meteen
-    const api = window.WorkspaceAPI || window.Extensions || window.TrimbleConnectWorkspace;
+    const api = window.TrimbleConnectWorkspace || window.WorkspaceAPI || window.Extensions;
     if (api) { console.log('[TC] API library direct gevonden:', api); return resolve(api); }
 
     const start = Date.now();
     const interval = setInterval(() => {
-      const api = window.WorkspaceAPI || window.Extensions || window.TrimbleConnectWorkspace;
+      const api = window.TrimbleConnectWorkspace || window.WorkspaceAPI || window.Extensions;
       if (api) { clearInterval(interval); console.log('[TC] API library gevonden na wachten:', api); resolve(api); }
       else if (Date.now() - start > maxWait) { clearInterval(interval); reject(new Error('Workspace API niet beschikbaar na ' + (maxWait/1000) + 's')); }
     }, 200);
@@ -1135,7 +1139,7 @@ async function initTCExtension() {
     console.log('[TC] Verbonden met Workspace API', _fromCockpit ? '(uit cockpit)' : '');
 
     // Project info ophalen
-    tcProject = await tcAPI.project.getCurrentProject();
+    tcProject = await tcAPI.project.getProject();
     console.log('[TC] Project:', JSON.stringify(tcProject));
 
     // Registreer sidebar menu-item — als geopend vanuit cockpit, NIET overschrijven
@@ -1148,8 +1152,6 @@ async function initTCExtension() {
       };
       if (tcAPI.ui && typeof tcAPI.ui.setMenu === 'function') {
         tcAPI.ui.setMenu(menuDef);
-      } else if (tcAPI.extension && typeof tcAPI.extension.setMenu === 'function') {
-        tcAPI.extension.setMenu(menuDef);
       }
     }
 
@@ -1283,17 +1285,6 @@ async function tcAutoFetchData() {
           if (tcToken) { clearInterval(check); clearTimeout(timeout); resolve(); }
         }, 200);
       });
-    }
-
-    if (!tcToken) {
-      // Methode 3: Probeer getAccessToken als die bestaat
-      if (tcAPI.extension && typeof tcAPI.extension.getAccessToken === 'function') {
-        try {
-          const t = await tcAPI.extension.getAccessToken();
-          if (t && t.length > 20) tcToken = t;
-          console.log('[TC] getAccessToken resultaat:', !!tcToken);
-        } catch (e) { console.warn('[TC] getAccessToken mislukt:', e.message); }
-      }
     }
 
     if (!tcToken) {
@@ -1438,18 +1429,13 @@ function _isTokenExpired() {
 async function _ensureValidToken() {
   if (!_isTokenExpired()) return;
   console.log('[TC] Token verlopen, vernieuwen...');
-  if (isEmbedded && tcAPI && tcAPI.extension) {
+  if (isEmbedded && tcAPI && tcAPI.extension && tcAPI.extension.requestPermission) {
     try {
+      var result = await Promise.race([tcAPI.extension.requestPermission('accesstoken'), new Promise(function(_,rej){setTimeout(function(){rej(new Error('timeout'));},5000);})]);
       var newToken = null;
-      if (tcAPI.extension.getAccessToken) {
-        newToken = await Promise.race([tcAPI.extension.getAccessToken(), new Promise(function(_,rej){setTimeout(function(){rej(new Error('timeout'));},5000);})]);
-      }
-      if (!newToken && tcAPI.extension.requestPermission) {
-        var result = await Promise.race([tcAPI.extension.requestPermission('accesstoken'), new Promise(function(_,rej){setTimeout(function(){rej(new Error('timeout'));},5000);})]);
-        if (typeof result === 'string') newToken = result;
-        else if (result && result.token) newToken = result.token;
-        else if (result && result.accessToken) newToken = result.accessToken;
-      }
+      if (typeof result === 'string') newToken = result;
+      else if (result && result.token) newToken = result.token;
+      else if (result && result.accessToken) newToken = result.accessToken;
       if (newToken && newToken.length > 20) {
         tcToken = newToken;
         _tcTokenExp = _parseTokenExp(tcToken);

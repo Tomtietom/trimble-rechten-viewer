@@ -3,5 +3,6 @@
   "url": "https://Tomtietom.github.io/trimble-rechten-viewer/",
   "icon": "https://Tomtietom.github.io/trimble-rechten-viewer/icon.png",
   "description": "Visueel overzicht van maprechten, groepen en gebruikers in je Trimble Connect project",
+  "extensionType": ["project"],
   "enabled": true
 }
