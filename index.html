@@ -532,6 +532,18 @@ input[type="file"] { display: none; }
 .info-modal .info-badge { display: inline-block; padding: 1px 8px; border-radius: 8px; font-size: 11px; font-weight: 600; }
 .info-modal .badge-full { background: var(--af-full-bg); color: var(--af-full); }
 .info-modal .badge-read { background: var(--af-read-bg); color: var(--af-read); }
+/* Settings-modal hergebruikt info-modal-overlay als basis */
+.settings-modal { max-width: 480px; }
+.settings-modal label { display: block; font-size: 11px; font-weight: 700; color: #7F8C8D; margin: 16px 0 6px; text-transform: uppercase; letter-spacing: 0.3px; }
+.settings-modal label.checkbox-row { display: flex; align-items: center; gap: 8px; cursor: pointer; text-transform: none; letter-spacing: normal; font-weight: 500; color: #333; font-size: 13px; margin-top: 12px; }
+.settings-modal select { width: 100%; padding: 8px 12px; border: 1px solid #d6cdc0; border-radius: 8px; font-size: 13px; font-family: 'Poppins', sans-serif; outline: none; transition: border-color 0.15s; box-sizing: border-box; }
+.settings-modal select:focus { border-color: var(--af-oranje); }
+.settings-modal input[type=checkbox] { width: auto; margin: 0; flex-shrink: 0; accent-color: var(--af-oranje); cursor: pointer; }
+.settings-modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 24px; }
+.settings-modal .btn-primary { padding: 8px 16px; background: var(--af-oranje); color: #fff; border: none; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: 'Poppins', sans-serif; transition: background 0.15s; }
+.settings-modal .btn-primary:hover { background: var(--af-oranje-hover); }
+.settings-modal .btn-secondary { padding: 8px 16px; background: transparent; color: #555; border: 1px solid #d6cdc0; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; font-family: 'Poppins', sans-serif; transition: border-color 0.15s; }
+.settings-modal .btn-secondary:hover { border-color: #999; }
 .info-modal .badge-none { background: #fde8e8; color: #a94442; }
 .info-modal .badge-link { background: #fff8e1; color: #856404; }
 .info-modal .note-box {
@@ -1135,6 +1147,13 @@ async function initTCExtension() {
           window.location.href = TARGETS[cmd];
         }
       }
+      // configCommand uit manifest (tandwiel-icoon in TC-extensies-instellingen)
+      if (event === 'extension.command') {
+        const cmdString = (typeof data === 'string') ? data : (data && data.data);
+        if (cmdString === 'open_settings') {
+          openSettingsModal();
+        }
+      }
     }, 15000);
     console.log('[TC] Verbonden met Workspace API', _fromCockpit ? '(uit cockpit)' : '');
 
@@ -1603,23 +1622,16 @@ async function tcFetchTeam() {
 
   console.log('[TC] Users:', users.length, '| Admins:', users.filter(u => (u.role || '').toUpperCase() === 'ADMIN').length);
 
-  // Groepen ophalen — probeer meerdere endpoints
+  // Groepen ophalen — alleen /groups?projectId={id} bestaat in de Core API spec
   let groups = [];
-  const groupEndpoints = [
-    `/groups?projectId=${tcProject.id}`,
-    `/projects/${tcProject.id}/groups`
-  ];
-  for (const ep of groupEndpoints) {
-    try {
-      const result = await tcFetchPaginated(ep);
-      if (Array.isArray(result) && result.length > 0) {
-        groups = result;
-        console.log('[TC] Groepen opgehaald via', ep, ':', groups.length);
-        break;
-      }
-    } catch (e) {
-      console.warn('[TC] Groepen endpoint mislukt:', ep, e.message);
+  try {
+    const result = await tcFetchPaginated(`/groups?projectId=${tcProject.id}`);
+    if (Array.isArray(result)) {
+      groups = result;
+      console.log('[TC] Groepen opgehaald:', groups.length);
     }
+  } catch (e) {
+    console.warn('[TC] Groepen endpoint mislukt:', e.message);
   }
   if (groups.length === 0) {
     console.warn('[TC] Geen groepen gevonden via API');
@@ -2737,6 +2749,15 @@ function startApp() {
   document.getElementById('treeArea').style.display = 'none';
   document.getElementById('dashboardPanel').classList.add('visible');
   renderDashboard();
+
+  // Als gebruiker een default-groep heeft ingesteld via instellingen, daar direct heen
+  if (typeof getSetting === 'function') {
+    const savedGroup = getSetting('defaultGroup');
+    if (savedGroup && Array.isArray(allGroups) && allGroups.includes(savedGroup)) {
+      console.log('[Settings] Open default-groep op basis van gebruikersvoorkeur:', savedGroup);
+      setTimeout(() => switchToGroup(savedGroup), 200);
+    }
+  }
 }
 
 function dashNavigate(view, filter) {
@@ -2889,6 +2910,95 @@ function backToUpload() {
     document.getElementById('standaloneMessage').style.display = '';
   }
 }
+
+// === SETTINGS (configCommand: open_settings) ===
+// localStorage-prefix 'atfielt_rights_' voor naamspace-isolatie tussen At Fielt extensies
+const SETTINGS_PREFIX = 'atfielt_rights_';
+const SETTINGS_DEFAULTS = {
+  auditFormat: 'xlsx',           // 'xlsx' | 'csv' | 'pdf'
+  defaultGroup: '',              // groep-id of '' voor alle groepen
+  showUnreachableBanner: true    // banner tonen bij onbereikbare mappen
+};
+function getSetting(key) {
+  const raw = localStorage.getItem(SETTINGS_PREFIX + key);
+  if (raw === null) return SETTINGS_DEFAULTS[key];
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return raw;
+}
+function setSetting(key, value) {
+  localStorage.setItem(SETTINGS_PREFIX + key, String(value));
+}
+function openSettingsModal() {
+  document.getElementById('setting-audit-format').value = getSetting('auditFormat');
+  // Dropdown vullen met daadwerkelijk geladen groepen
+  const groupSelect = document.getElementById('setting-default-group');
+  const currentValue = getSetting('defaultGroup');
+  groupSelect.innerHTML = '<option value="">— geen, toon alle —</option>';
+  if (Array.isArray(allGroups) && allGroups.length > 0) {
+    for (const g of allGroups) {
+      const opt = document.createElement('option');
+      opt.value = g;
+      opt.textContent = g;
+      if (g === currentValue) opt.selected = true;
+      groupSelect.appendChild(opt);
+    }
+  }
+  document.getElementById('setting-show-unreachable-banner').checked = getSetting('showUnreachableBanner') === true;
+  document.getElementById('settingsModalOverlay').classList.add('visible');
+}
+function closeSettingsModal() {
+  document.getElementById('settingsModalOverlay').classList.remove('visible');
+}
+function saveSettingsModal() {
+  setSetting('auditFormat', document.getElementById('setting-audit-format').value);
+  setSetting('defaultGroup', document.getElementById('setting-default-group').value);
+  setSetting('showUnreachableBanner', document.getElementById('setting-show-unreachable-banner').checked);
+  closeSettingsModal();
+  console.log('[Settings] Opgeslagen:', {
+    auditFormat: getSetting('auditFormat'),
+    defaultGroup: getSetting('defaultGroup'),
+    showUnreachableBanner: getSetting('showUnreachableBanner')
+  });
+}
+// Sluit modal bij klik op overlay-backdrop
+document.addEventListener('DOMContentLoaded', () => {
+  const bg = document.getElementById('settingsModalOverlay');
+  if (bg) bg.addEventListener('click', (e) => {
+    if (e.target === bg) closeSettingsModal();
+  });
+});
 </script>
+
+<!-- Settings modal (configCommand: open_settings — tandwiel-icoon in TC extensies-instellingen) -->
+<div id="settingsModalOverlay" class="info-modal-overlay">
+  <div class="info-modal settings-modal">
+    <button class="close-btn" onclick="closeSettingsModal()" aria-label="Sluiten">×</button>
+    <h2>Instellingen — Rechten Viewer</h2>
+
+    <label for="setting-audit-format">Audit-export-formaat</label>
+    <select id="setting-audit-format">
+      <option value="xlsx">Excel</option>
+      <option value="csv">CSV</option>
+      <option value="pdf">PDF (rapport)</option>
+    </select>
+
+    <label for="setting-default-group">Standaard groep tonen bij openen</label>
+    <select id="setting-default-group">
+      <option value="">— geen, toon alle —</option>
+      <!-- Groepen worden gevuld na het laden van project-data; voor nu placeholder -->
+    </select>
+
+    <label class="checkbox-row">
+      <input type="checkbox" id="setting-show-unreachable-banner">
+      <span>Banner tonen bij gedetecteerde onbereikbare mappen</span>
+    </label>
+
+    <div class="actions">
+      <button class="btn-secondary" onclick="closeSettingsModal()">Annuleren</button>
+      <button class="btn-primary" onclick="saveSettingsModal()">Opslaan</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
